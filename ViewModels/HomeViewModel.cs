@@ -139,7 +139,7 @@ public sealed partial class DeviceItem : ObservableObject
             cts.Token, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
     }
 
-    private static List<string> Readings(Device d) => d.Properties.Where(p => p.Value is not null).Select(p =>
+    private static List<string> ShortReadings(Device d) => d.Properties.Where(p => p.Value is not null).Select(p =>
     {
         string v = p.Value!.Value.ToString("0.#", CultureInfo.InvariantCulture);
         return p.Instance switch
@@ -155,7 +155,7 @@ public sealed partial class DeviceItem : ObservableObject
 
     private static string BuildSubtitle(Device d)
     {
-        var parts = Readings(d);
+        var parts = ShortReadings(d);
         if (d.Range("brightness")?.NumberValue is double b && d.OnOff?.OnValue == true) parts.Insert(0, $"{b:0}%");
         if (d.Range("temperature")?.NumberValue is double t) parts.Insert(0, $"→ {t:0} °C");
         return string.Join(" · ", parts);
@@ -169,7 +169,7 @@ public sealed partial class DeviceItem : ObservableObject
             if (!on) return "Выкл";
             return d.Range("brightness")?.NumberValue is double b ? $"Вкл · {b:0}%" : "Вкл";
         }
-        return string.Join(" · ", Readings(d));
+        return string.Join(" · ", ShortReadings(d));
     }
 
     /// <summary>Текущий цвет лампы для кружка: hsv, rgb или оттенок белого.</summary>

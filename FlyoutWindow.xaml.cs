@@ -166,7 +166,7 @@ public sealed partial class FlyoutWindow : Window
     /// <summary>Клик по плитке (не по переключателю) — подробности: яркость, цвет, показания датчиков.</summary>
     private void Tile_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        for (var el = e.OriginalSource as DependencyObject; el is not null && el != sender; el = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(el))
+        for (var el = e.OriginalSource as DependencyObject; el is not null && !ReferenceEquals(el, sender); el = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(el))
             if (el is ToggleSwitch) return; // переключатель сам включает/выключает
 
         if ((sender as FrameworkElement)?.Tag is DeviceItem { HasDetails: true } item)
