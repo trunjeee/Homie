@@ -1,0 +1,8 @@
+<Window
+    x:Class="Homie.HostWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Homie">
+    <!-- Невидимое служебное окно: иконка в трее и горячие клавиши. Никогда не показывается. -->
+    <Grid />
+</Window>

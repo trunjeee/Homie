@@ -1,0 +1,67 @@
+<Application
+    x:Class="Homie.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    RequestedTheme="Dark">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <FontFamily x:Key="AppFont">ms-appx:///Assets/Fonts/Manrope-Medium.ttf#Manrope</FontFamily>
+            <FontFamily x:Key="AppFontSemiBold">ms-appx:///Assets/Fonts/Manrope-SemiBold.ttf#Manrope</FontFamily>
+            <FontFamily x:Key="ContentControlThemeFontFamily">ms-appx:///Assets/Fonts/Manrope-Medium.ttf#Manrope</FontFamily>
+
+            <!-- Кнопки — как в TouchControl: тёмное стекло, наведение светлее -->
+            <SolidColorBrush x:Key="ButtonBackground" Color="#99212426" />
+            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#38FFFFFF" />
+            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#B3181A1C" />
+            <SolidColorBrush x:Key="ButtonBorderBrush" Color="#FF434446" />
+            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#FF6E7072" />
+            <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#FF434446" />
+            <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+            <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#D9FFFFFF" />
+
+            <!-- Главные кнопки — белые, как включённые кнопки TouchControl -->
+            <SolidColorBrush x:Key="AccentButtonBackground" Color="White" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#FFE8E8E8" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#FFD0D0D0" />
+            <SolidColorBrush x:Key="AccentButtonBackgroundDisabled" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="AccentButtonForeground" Color="Black" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="Black" />
+            <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#CC000000" />
+            <SolidColorBrush x:Key="AccentButtonForegroundDisabled" Color="#80FFFFFF" />
+            <SolidColorBrush x:Key="AccentButtonBorderBrush" Color="Transparent" />
+            <SolidColorBrush x:Key="AccentButtonBorderBrushPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="AccentButtonBorderBrushPressed" Color="Transparent" />
+
+            <!-- Переключатели: включено — белый с чёрным кружком -->
+            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="White" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FFE8E8E8" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#FFD0D0D0" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="Black" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="Black" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="Black" />
+
+            <!-- Ползунок яркости — белый -->
+            <SolidColorBrush x:Key="SliderTrackValueFill" Color="White" />
+            <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="White" />
+            <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="#FFE8E8E8" />
+            <SolidColorBrush x:Key="SliderThumbBackground" Color="White" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="White" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#FFE8E8E8" />
+            <SolidColorBrush x:Key="SliderTrackFill" Color="#24FFFFFF" />
+            <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#33FFFFFF" />
+
+            <Style x:Key="TileButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="CornerRadius" Value="14" />
+                <Setter Property="BorderThickness" Value="1.5" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="FontFamily" Value="{StaticResource AppFontSemiBold}" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
