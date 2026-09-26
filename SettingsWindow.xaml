@@ -115,6 +115,13 @@
                     <TextBlock Style="{StaticResource Hint}" Text="Токен хранится только на этом ПК, зашифрованным (Windows DPAPI). В коде приложения ключей нет." />
                 </StackPanel>
 
+                <!-- ===== Комнаты ===== -->
+                <StackPanel Style="{StaticResource Card}">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Комнаты" />
+                    <TextBlock Style="{StaticResource Hint}" Text="Порядок в панели сверху вниз. Часто используемые подними наверх, ненужные — скрой." />
+                    <StackPanel x:Name="RoomOrderList" Spacing="6" />
+                </StackPanel>
+
                 <!-- ===== Горячие клавиши ===== -->
                 <StackPanel Style="{StaticResource Card}">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Горячие клавиши" />

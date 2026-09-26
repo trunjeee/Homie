@@ -89,11 +89,75 @@ public sealed partial class SettingsWindow : Window
             : _home.IsSignedIn ? "✓ Подключено" : _home.ErrorText ?? "Не подключено";
     }
 
+    // ---------- комнаты: порядок и видимость ----------
+
+    private void BuildRoomOrder()
+    {
+        RoomOrderList.Children.Clear();
+        var rooms = _home.GetRoomEntries();
+        if (rooms.Count == 0)
+        {
+            RoomOrderList.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = "Появятся после подключения", FontSize = 12, Opacity = 0.6 });
+            return;
+        }
+
+        for (int i = 0; i < rooms.Count; i++)
+        {
+            var room = rooms[i];
+            var row = new Microsoft.UI.Xaml.Controls.Grid
+            {
+                Padding = new Thickness(12, 4, 4, 4),
+                ColumnSpacing = 4,
+                CornerRadius = new CornerRadius(10),
+                Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF)),
+            };
+            foreach (var w in new[] { new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto, GridLength.Auto })
+                row.ColumnDefinitions.Add(new Microsoft.UI.Xaml.Controls.ColumnDefinition { Width = w });
+
+            var name = new Microsoft.UI.Xaml.Controls.TextBlock
+            {
+                Text = room.Name, FontSize = 13, VerticalAlignment = VerticalAlignment.Center,
+                Opacity = room.IsHidden ? 0.45 : 1,
+            };
+            row.Children.Add(name);
+            row.Children.Add(Arrow("", "Выше", 1, i > 0, () => _home.MoveRoom(room.Key, -1)));
+            row.Children.Add(Arrow("", "Ниже", 2, i < rooms.Count - 1, () => _home.MoveRoom(room.Key, +1)));
+
+            var visible = new Microsoft.UI.Xaml.Controls.ToggleSwitch
+            {
+                IsOn = !room.IsHidden, OnContent = "", OffContent = "", MinWidth = 0,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0),
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(visible, $"Показывать {room.Name}");
+            visible.Toggled += (_, _) => { _home.SetRoomHidden(room.Key, !visible.IsOn); name.Opacity = visible.IsOn ? 1 : 0.45; };
+            Microsoft.UI.Xaml.Controls.Grid.SetColumn(visible, 3);
+            row.Children.Add(visible);
+
+            RoomOrderList.Children.Add(row);
+        }
+
+        Microsoft.UI.Xaml.Controls.Button Arrow(string glyph, string label, int column, bool enabled, Action move)
+        {
+            var b = new Microsoft.UI.Xaml.Controls.Button
+            {
+                Width = 32, Height = 32, Padding = new Thickness(0), IsEnabled = enabled,
+                Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(8),
+                Content = new Microsoft.UI.Xaml.Controls.FontIcon { Glyph = glyph, FontSize = 12 },
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, label);
+            b.Click += (_, _) => { move(); BuildRoomOrder(); };
+            Microsoft.UI.Xaml.Controls.Grid.SetColumn(b, column);
+            return b;
+        }
+    }
+
     // ---------- горячие клавиши ----------
 
     private async Task LoadTargetsAsync()
     {
         if (_home.Data is null && _home.IsSignedIn) await _home.RefreshAsync();
+        BuildRoomOrder();
         var options = new List<TargetOption>();
         if (_home.Data is { } data)
         {

@@ -23,6 +23,13 @@ public sealed class AppSettings
     public string ClientId { get; set; } = "";
     public string? HouseholdId { get; set; }
     public List<HotkeyBinding> Hotkeys { get; set; } = [];
+
+    /// <summary>Вид панели: плитки (как в TouchControl) или список.</summary>
+    public bool TilesView { get; set; } = true;
+
+    /// <summary>Порядок комнат сверху вниз (ID комнат; «группы» и «без комнаты» — служебные ключи).</summary>
+    public List<string> RoomOrder { get; set; } = [];
+    public List<string> HiddenRooms { get; set; } = [];
 }
 
 [JsonSerializable(typeof(AppSettings))]

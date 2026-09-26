@@ -12,12 +12,18 @@ public sealed record Household(string Id, string Name);
 public sealed record Room(string Id, string Name, string? HouseholdId);
 public sealed record Scenario(string Id, string Name, bool IsActive);
 
-/// <summary>Умение устройства: вкл/выкл, диапазон (яркость, температура…) и т.п.</summary>
+/// <summary>Умение устройства: вкл/выкл, диапазон (яркость, температура…), цвет и т.п.</summary>
 public sealed record Capability(string Type, string Instance, bool Retrievable, JsonElement? Value,
-    double Min = 0, double Max = 100, double Precision = 1, string? Unit = null)
+    double Min = 0, double Max = 100, double Precision = 1, string? Unit = null,
+    string? ColorModel = null, int TemperatureMin = 0, int TemperatureMax = 0)
 {
     public bool IsOnOff => Type == "devices.capabilities.on_off";
     public bool IsRange => Type == "devices.capabilities.range";
+    public bool IsColor => Type == "devices.capabilities.color_setting";
+    /// <summary>Лампа умеет цвет (модель hsv или rgb).</summary>
+    public bool SupportsColor => IsColor && ColorModel is "hsv" or "rgb";
+    /// <summary>Лампа умеет оттенки белого (тёплый/холодный).</summary>
+    public bool SupportsWhite => IsColor && TemperatureMax > TemperatureMin;
     public bool? OnValue => IsOnOff && Value is { ValueKind: JsonValueKind.True or JsonValueKind.False } v ? v.GetBoolean() : null;
     public double? NumberValue => Value is { ValueKind: JsonValueKind.Number } v ? v.GetDouble() : null;
 }
@@ -29,6 +35,7 @@ public sealed record Device(string Id, string Name, string Type, string? RoomId,
     IReadOnlyList<Capability> Capabilities, IReadOnlyList<Property> Properties, bool IsGroup = false)
 {
     public Capability? OnOff => Capabilities.FirstOrDefault(c => c.IsOnOff);
+    public Capability? Color => Capabilities.FirstOrDefault(c => c.IsColor && (c.SupportsColor || c.SupportsWhite));
     public Capability? Range(string instance) => Capabilities.FirstOrDefault(c => c.IsRange && c.Instance == instance);
 }
 
@@ -69,6 +76,48 @@ public sealed class SmartHomeApi(Func<string?> tokenProvider) : IDisposable
 
     public Task SetRangeAsync(Device device, string instance, double value, CancellationToken ct = default) =>
         ActAsync(device, new JsonObject { ["type"] = "devices.capabilities.range", ["state"] = new JsonObject { ["instance"] = instance, ["value"] = value } }, ct);
+
+    /// <summary>Цвет лампы: в модели самой лампы (hsv или rgb).</summary>
+    public Task SetColorAsync(Device device, Windows.UI.Color color, CancellationToken ct = default)
+    {
+        var model = device.Color?.ColorModel ?? "hsv";
+        JsonNode value;
+        if (model == "rgb")
+        {
+            value = (color.R << 16) | (color.G << 8) | color.B;
+        }
+        else
+        {
+            var (h, s, v) = ToHsv(color);
+            value = new JsonObject { ["h"] = h, ["s"] = s, ["v"] = v };
+        }
+        return ActAsync(device, new JsonObject
+        {
+            ["type"] = "devices.capabilities.color_setting",
+            ["state"] = new JsonObject { ["instance"] = model, ["value"] = value },
+        }, ct);
+    }
+
+    /// <summary>Оттенок белого в кельвинах (2700 — тёплый, 6500 — холодный), в пределах лампы.</summary>
+    public Task SetWhiteAsync(Device device, int kelvin, CancellationToken ct = default)
+    {
+        var c = device.Color;
+        int k = c is null ? kelvin : Math.Clamp(kelvin, c.TemperatureMin, c.TemperatureMax);
+        return ActAsync(device, new JsonObject
+        {
+            ["type"] = "devices.capabilities.color_setting",
+            ["state"] = new JsonObject { ["instance"] = "temperature_k", ["value"] = k },
+        }, ct);
+    }
+
+    private static (int H, int S, int V) ToHsv(Windows.UI.Color c)
+    {
+        double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), d = max - min;
+        double h = d == 0 ? 0 : max == r ? 60 * ((g - b) / d % 6) : max == g ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
+        if (h < 0) h += 360;
+        return ((int)Math.Round(h), (int)Math.Round(max == 0 ? 0 : d / max * 100), (int)Math.Round(max * 100));
+    }
 
     public async Task RunScenarioAsync(string scenarioId, CancellationToken ct = default)
     {
@@ -118,21 +167,28 @@ public sealed class SmartHomeApi(Func<string?> tokenProvider) : IDisposable
                 if (state.TryGetProperty("value", out var v)) value = v.Clone();
             }
             double min = 0, max = 100, precision = 1;
-            string? unit = null;
+            string? unit = null, colorModel = null;
+            int tMin = 0, tMax = 0;
             if (c.TryGetProperty("parameters", out var p) && p.ValueKind == JsonValueKind.Object)
             {
                 if (string.IsNullOrEmpty(instance)) instance = OptStr(p, "instance") ?? "";
                 unit = OptStr(p, "unit");
+                colorModel = OptStr(p, "color_model");
                 if (p.TryGetProperty("range", out var r))
                 {
                     min = r.TryGetProperty("min", out var mn) ? mn.GetDouble() : min;
                     max = r.TryGetProperty("max", out var mx) ? mx.GetDouble() : max;
                     precision = r.TryGetProperty("precision", out var pr) ? pr.GetDouble() : precision;
                 }
+                if (p.TryGetProperty("temperature_k", out var t) && t.ValueKind == JsonValueKind.Object)
+                {
+                    tMin = t.TryGetProperty("min", out var a) ? a.GetInt32() : 0;
+                    tMax = t.TryGetProperty("max", out var b) ? b.GetInt32() : 0;
+                }
             }
             return new Capability(Str(c, "type"), instance,
                 !c.TryGetProperty("retrievable", out var ret) || ret.ValueKind != JsonValueKind.False,
-                value, min, max, precision, unit);
+                value, min, max, precision, unit, colorModel, tMin, tMax);
         }).ToList();
 
         var properties = Array(d, "properties").Select(p =>
