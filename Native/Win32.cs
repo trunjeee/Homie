@@ -39,6 +39,10 @@ internal static partial class Win32
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool UnregisterHotKey(nint hWnd, int id);
+
+    /// <summary>Зажата ли клавиша прямо сейчас (старший бит) — для «нажми и говори».</summary>
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
     public const uint WM_APP = 0x8000;
     public const uint WM_CLOSE = 0x0010;
     public const uint GW_OWNER = 4;

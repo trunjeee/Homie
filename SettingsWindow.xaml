@@ -122,6 +122,82 @@
                     <StackPanel x:Name="RoomOrderList" Spacing="6" />
                 </StackPanel>
 
+                <!-- ===== Голос ===== -->
+                <StackPanel Style="{StaticResource Card}">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Голосовое управление" />
+                    <TextBlock Style="{StaticResource Hint}" Text="Распознавание работает офлайн, прямо на этом ПК — голос никуда не отправляется. Примеры: «Хоуми, выключи свет», «включи свет в зале», «яркость пятьдесят», «сделай ярче», «свет тёплый», «красный свет», «выключи всё везде», «какая температура», «запусти сценарий Ночь»." />
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Spacing="4">
+                            <TextBlock
+                                x:Name="ModelStatus"
+                                FontSize="13"
+                                TextWrapping="Wrap" />
+                            <ProgressBar
+                                x:Name="ModelProgress"
+                                Maximum="1"
+                                Visibility="Collapsed" />
+                        </StackPanel>
+                        <Button
+                            x:Name="ModelButton"
+                            Grid.Column="1"
+                            Click="DownloadModel_Click"
+                            CornerRadius="10"
+                            Content="Скачать" />
+                    </Grid>
+
+                    <RadioButtons
+                        x:Name="VoiceModeBox"
+                        Header="Как слушать"
+                        SelectionChanged="VoiceMode_SelectionChanged">
+                        <x:String>Выключено</x:String>
+                        <x:String>Всегда слушать слово «Хоуми»</x:String>
+                        <x:String>Только по клавише</x:String>
+                        <x:String>И «Хоуми», и клавиша</x:String>
+                    </RadioButtons>
+
+                    <StackPanel x:Name="VoiceKeyPanel" Spacing="4">
+                        <TextBox
+                            x:Name="VoiceKeyBox"
+                            Width="260"
+                            HorizontalAlignment="Left"
+                            Header="Клавиша для голоса"
+                            IsReadOnly="True"
+                            PlaceholderText="нажми клавишу или сочетание…"
+                            PreviewKeyDown="VoiceKeyBox_PreviewKeyDown" />
+                        <TextBlock Style="{StaticResource Hint}" Text="Удерживай — говори, отпусти — выполнится. Короткое нажатие — слушает до паузы. Можно одну клавишу (например F13, Pause, Scroll Lock, Num 0) или сочетание." />
+                    </StackPanel>
+
+                    <ComboBox
+                        x:Name="PcRoomBox"
+                        MinWidth="260"
+                        DisplayMemberPath="Name"
+                        Header="Комната, где стоит этот ПК"
+                        SelectionChanged="PcRoomBox_SelectionChanged" />
+                    <TextBlock Style="{StaticResource Hint}" Text="Команды без комнаты («выключи свет») выполняются здесь, как у колонки. «В зале» — в зале, «везде» — во всём доме." />
+
+                    <StackPanel x:Name="WakePanel" Spacing="4">
+                        <TextBox
+                            x:Name="WakeWordsBox"
+                            Header="Как модель слышит «Хоуми» (варианты через запятую)"
+                            LostFocus="WakeWordsBox_LostFocus" />
+                        <TextBlock
+                            x:Name="HeardText"
+                            Style="{StaticResource Hint}"
+                            Text="Скажи «Хоуми» — здесь появится, что услышал микрофон. Если слово распознаётся иначе, добавь этот вариант в список." />
+                    </StackPanel>
+
+                    <TextBlock
+                        x:Name="VoiceError"
+                        FontSize="12"
+                        Foreground="#EF4444"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
                 <!-- ===== Горячие клавиши ===== -->
                 <StackPanel Style="{StaticResource Card}">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Горячие клавиши" />

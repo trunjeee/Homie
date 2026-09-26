@@ -30,6 +30,18 @@ public sealed class AppSettings
     /// <summary>Порядок комнат сверху вниз (ID комнат; «группы» и «без комнаты» — служебные ключи).</summary>
     public List<string> RoomOrder { get; set; } = [];
     public List<string> HiddenRooms { get; set; } = [];
+
+    // ---------- голос ----------
+
+    /// <summary>Выключен, слушает «Хоуми», только по клавише или и то и другое.</summary>
+    public VoiceMode VoiceMode { get; set; } = VoiceMode.Off;
+    /// <summary>Клавиша «нажми и говори»: можно одну клавишу, можно сочетание.</summary>
+    public uint VoiceModifiers { get; set; }
+    public uint VoiceKey { get; set; }
+    /// <summary>Комната, где стоит этот ПК: команды без комнаты выполняются в ней.</summary>
+    public string? PcRoomId { get; set; }
+    /// <summary>Как распознаётся слово вызова — модель может слышать «хоуми» по-разному.</summary>
+    public string WakeWords { get; set; } = "хоуми, хоми, хауми, хоуме, хоу ми, хоум ми, хаоми";
 }
 
 [JsonSerializable(typeof(AppSettings))]
@@ -39,7 +51,7 @@ internal partial class SettingsJsonContext : JsonSerializerContext;
 /// <summary>%LOCALAPPDATA%\Homie: settings.json и зашифрованный token.bin.</summary>
 public static class SettingsStore
 {
-    private static readonly string Dir = Path.Combine(
+    public static readonly string Dir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Homie");
     private static readonly string SettingsFile = Path.Combine(Dir, "settings.json");
     private static readonly string TokenFile = Path.Combine(Dir, "token.bin");

@@ -34,7 +34,7 @@ public sealed partial class DeviceItem : ObservableObject
 
     public string? ReadingsTooltip => Readings.Count == 0 ? null : string.Join("\n", Readings.Select(r => $"{r.Label}: {r.Value}"));
 
-    private static string ReadingLabel(string instance) => instance switch
+    internal static string ReadingLabel(string instance) => instance switch
     {
         "temperature" => "Температура",
         "humidity" => "Влажность",
@@ -55,7 +55,7 @@ public sealed partial class DeviceItem : ObservableObject
         _ => instance,
     };
 
-    private static string FormatReading(Property p)
+    internal static string FormatReading(Property p)
     {
         string v = p.Value!.Value.ToString("0.#", CultureInfo.InvariantCulture);
         string unit = p.Unit switch
@@ -268,6 +268,7 @@ public sealed partial class HomeViewModel : ObservableObject, IDisposable
         try
         {
             _data = await _api.GetHomeAsync();
+            _loadedAt = DateTime.Now;
             IsSignedIn = true;
             ErrorText = null;
             Apply(_data);
@@ -464,6 +465,101 @@ public sealed partial class HomeViewModel : ObservableObject, IDisposable
         if (scenario is null) { await RefreshAsync(); scenario = _data?.Scenarios.FirstOrDefault(s => s.Id == scenarioId); }
         if (scenario is null) Notify?.Invoke("Сценарий не найден — проверь горячие клавиши в настройках");
         else await RunScenarioAsync(scenario);
+    }
+
+    // ---------- голосовые команды ----------
+
+    private DateTime _loadedAt;
+
+    /// <summary>Выполнить фразу. Вернёт (получилось ли, что ответить в окошке).</summary>
+    public async Task<(bool Ok, string Answer)> ExecuteVoiceAsync(string text, string? pcRoomId)
+    {
+        if (!IsSignedIn) return (false, "Умный дом не подключён");
+        // Для «ярче»/«какая температура» нужно свежее состояние.
+        if (_data is null || DateTime.Now - _loadedAt > TimeSpan.FromSeconds(10)) await RefreshAsync();
+        if (_data is null) return (false, ErrorText ?? "Нет связи с умным домом");
+
+        var intent = VoiceCommands.Parse(text, _data, SelectedHousehold?.Id, pcRoomId, out var error);
+        if (intent is null) return (false, error);
+
+        if (intent.Action == VoiceAction.Scenario)
+        {
+            bool started = await RunAsync(() => _api.RunScenarioAsync(intent.Scenario!.Id), $"Сценарий «{intent.Scenario!.Name}» не запустился");
+            return started ? (true, $"Сценарий «{intent.Scenario!.Name}» запущен") : (false, "Сценарий не запустился");
+        }
+
+        if (intent.Action == VoiceAction.Query)
+        {
+            var rooms = _data.Rooms.ToDictionary(r => r.Id, r => r.Name);
+            var lines = intent.Devices.Select(d =>
+            {
+                var p = d.Properties.First(x => x.Instance == intent.Property && x.Value is not null);
+                string place = d.RoomId is not null && rooms.TryGetValue(d.RoomId, out var r) ? r : d.Name;
+                return $"{place}: {DeviceItem.FormatReading(p)}";
+            }).Distinct().Take(4);
+            return (true, $"{DeviceItem.ReadingLabel(intent.Property)} — " + string.Join(", ", lines));
+        }
+
+        var tasks = intent.Devices.Select(d => ApplyVoiceAsync(d, intent)).ToList();
+        bool[] results = await Task.WhenAll(tasks);
+        _ = RefreshSoonAsync();
+        int ok = results.Count(r => r);
+        if (ok == 0) return (false, "Не получилось — устройство не ответило");
+
+        string what = intent.What;
+        string done = intent.Action switch
+        {
+            VoiceAction.On => $"Включаю {what}",
+            VoiceAction.Off => $"Выключаю {what}",
+            VoiceAction.SetBrightness => $"{Cap(what)}: яркость {Math.Clamp(intent.Value, 1, 100):0}%",
+            VoiceAction.Brighter => $"{Cap(what)}: ярче",
+            VoiceAction.Dimmer => $"{Cap(what)}: темнее",
+            _ => $"{Cap(what)}: {intent.ColorName}",
+        };
+        string count = intent.Devices.Count > 1 ? $" ({ok})" : "";
+        return (ok == results.Length, $"{done}{count} · {intent.Where}");
+
+        static string Cap(string s) => s.Length == 0 ? s : char.ToUpper(s[0]) + s[1..];
+    }
+
+    private async Task<bool> ApplyVoiceAsync(Device d, VoiceIntent intent)
+    {
+        try
+        {
+            // Яркость и цвет выключенной лампе: сначала включаем.
+            bool needsOn = intent.Action is not (VoiceAction.On or VoiceAction.Off) && d.OnOff?.OnValue == false;
+            if (needsOn) await _api.SetOnOffAsync(d, true);
+
+            switch (intent.Action)
+            {
+                case VoiceAction.On: await _api.SetOnOffAsync(d, true); break;
+                case VoiceAction.Off: await _api.SetOnOffAsync(d, false); break;
+                case VoiceAction.Color: await _api.SetColorAsync(d, intent.Color); break;
+                case VoiceAction.White: await _api.SetWhiteAsync(d, intent.Kelvin); break;
+                default:
+                    var range = d.Range("brightness")!;
+                    double current = range.NumberValue ?? 50;
+                    double value = intent.Action switch
+                    {
+                        VoiceAction.Brighter => current + 25,
+                        VoiceAction.Dimmer => current - 25,
+                        _ => intent.Value,
+                    };
+                    value = Math.Clamp(Math.Round(value / range.Precision) * range.Precision, Math.Max(1, range.Min), range.Max);
+                    await _api.SetRangeAsync(d, "brightness", value);
+                    break;
+            }
+            return true;
+        }
+        catch (UnauthorizedException)
+        {
+            IsSignedIn = false;
+            return false;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return false;
+        }
     }
 
     private async Task<bool> RunAsync(Func<Task> action, string errorText)

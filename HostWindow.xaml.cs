@@ -13,6 +13,7 @@ namespace Homie;
 public sealed partial class HostWindow : Window
 {
     private const int HotkeyIdBase = 0x4000;
+    private const int VoiceHotkeyId = 0x5000;
 
     private readonly nint _hwnd;
     private readonly Win32.SUBCLASSPROC _wndProc;
@@ -23,6 +24,12 @@ public sealed partial class HostWindow : Window
     private FlyoutWindow? _flyout;
     private SettingsWindow? _settingsWindow;
     private DateTime _flyoutClosedAt;
+    private readonly VoiceService _voice;
+    private VoiceWindow? _voiceWindow;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _pttWatch;
+    private DateTime _pttPressedAt;
+    private bool _voiceKeyRegistered;
+    private string? _voiceError;
 
     public HostWindow()
     {
@@ -39,6 +46,17 @@ public sealed partial class HostWindow : Window
 
         ApplyHotkeys();
         _ = _home.RefreshAsync(); // чтобы меню со сценариями было готово сразу
+
+        _voice = new VoiceService(DispatcherQueue);
+        _voice.ListeningStarted += () => VoiceUi().ShowListening();
+        _voice.PartialText += text => _voiceWindow?.SetText(text);
+        _voice.Level += level => _voiceWindow?.SetLevel(level);
+        _voice.Cancelled += reason => _voiceWindow?.ShowCancelled(reason);
+        _voice.CommandRecognized += OnVoiceCommand;
+        _pttWatch = DispatcherQueue.CreateTimer();
+        _pttWatch.Interval = TimeSpan.FromMilliseconds(30);
+        _pttWatch.Tick += (_, _) => WatchVoiceKey();
+        _ = ApplyVoiceAsync();
 
         // Первый запуск без подключения — сразу открываем настройки.
         if (SettingsStore.LoadToken() is null) OpenSettings();
@@ -68,7 +86,7 @@ public sealed partial class HostWindow : Window
             _settingsWindow.Activate();
             return;
         }
-        _settingsWindow = new SettingsWindow(_settings, _home, ApplyHotkeys);
+        _settingsWindow = new SettingsWindow(_settings, _home, ApplyHotkeys, _voice, ApplyVoiceAsync);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Activate();
     }
@@ -94,6 +112,10 @@ public sealed partial class HostWindow : Window
         }
 
         items.Add(TrayMenuItem.Separator);
+        if (_voice.HasWakeWord && _voiceError is null)
+            items.Add(new("Слушать «Хоуми»", () => _voice.Paused = !_voice.Paused, !_voice.Paused));
+        else if (_voiceError is not null && _settings.VoiceMode != VoiceMode.Off)
+            items.Add(TrayMenuItem.Info("Голос: " + _voiceError));
         items.Add(new("Открыть панель", ToggleFlyout));
         items.Add(new("Настройки…", OpenSettings));
         items.Add(TrayMenuItem.Separator);
@@ -130,13 +152,70 @@ public sealed partial class HostWindow : Window
             : _home.ToggleDeviceAsync(binding.TargetId);
     }
 
+    // ---------- голос ----------
+
+    private VoiceWindow VoiceUi()
+    {
+        if (_voiceWindow is null)
+        {
+            _voiceWindow = new VoiceWindow();
+            _voiceWindow.Dismissed += () => _voice.CancelListening(silent: true);
+        }
+        return _voiceWindow;
+    }
+
+    /// <summary>Применить режим голоса и клавишу из настроек. Вернёт текст проблемы или null.</summary>
+    private async Task<string?> ApplyVoiceAsync()
+    {
+        if (_voiceKeyRegistered) Win32.UnregisterHotKey(_hwnd, VoiceHotkeyId);
+        _voiceKeyRegistered = false;
+
+        var mode = _settings.VoiceMode;
+        string? error = await _voice.ConfigureAsync(mode, _settings.WakeWords);
+        if (error is null && _voice.PushToTalkEnabled)
+        {
+            if (_settings.VoiceKey == 0) error = "Назначь клавишу для голоса";
+            else if (!(_voiceKeyRegistered = Win32.RegisterHotKey(_hwnd, VoiceHotkeyId,
+                         _settings.VoiceModifiers | Win32.MOD_NOREPEAT, _settings.VoiceKey)))
+                error = $"{HotkeyText.Format(_settings.VoiceModifiers, _settings.VoiceKey)} уже занято другой программой";
+        }
+        if (mode != VoiceMode.Off && error is null) VoiceUi(); // окошко готовим заранее, чтобы появлялось мгновенно
+        _voiceError = error;
+        return error;
+    }
+
+    private void OnVoiceKeyDown()
+    {
+        if (_pttWatch.IsRunning) return;
+        _pttPressedAt = DateTime.Now;
+        _voice.PushToTalkDown();
+        _pttWatch.Start();
+    }
+
+    /// <summary>RegisterHotKey сообщает только о нажатии — отпускание ловим опросом клавиши.</summary>
+    private void WatchVoiceKey()
+    {
+        if ((Win32.GetAsyncKeyState((int)_settings.VoiceKey) & 0x8000) != 0) return;
+        _pttWatch.Stop();
+        _voice.PushToTalkUp(shortTap: DateTime.Now - _pttPressedAt < TimeSpan.FromMilliseconds(350));
+    }
+
+    private async void OnVoiceCommand(string text)
+    {
+        var window = VoiceUi();
+        window.ShowProcessing(text);
+        var (ok, answer) = await _home.ExecuteVoiceAsync(text, _settings.PcRoomId);
+        window.ShowResult(ok, answer);
+    }
+
     // ---------- окно ----------
 
     private nint WndProc(nint hWnd, uint msg, nint wParam, nint lParam, nuint id, nuint data)
     {
         if (msg == Win32.WM_HOTKEY)
         {
-            OnHotkey((int)wParam);
+            if ((int)wParam == VoiceHotkeyId) OnVoiceKeyDown();
+            else OnHotkey((int)wParam);
             return 0;
         }
         return _tray?.HandleMessage(msg, wParam, lParam) == true ? 0 : Win32.DefSubclassProc(hWnd, msg, wParam, lParam);
@@ -145,6 +224,9 @@ public sealed partial class HostWindow : Window
     private void Quit()
     {
         for (int i = 0; i < _registered.Count; i++) Win32.UnregisterHotKey(_hwnd, HotkeyIdBase + i);
+        if (_voiceKeyRegistered) Win32.UnregisterHotKey(_hwnd, VoiceHotkeyId);
+        _voice.Dispose();
+        _voiceWindow?.Close();
         _tray.Dispose();
         _home.Dispose();
         Win32.RemoveWindowSubclass(_hwnd, _wndProc, 1);

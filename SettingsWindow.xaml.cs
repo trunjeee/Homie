@@ -24,13 +24,20 @@ public sealed partial class SettingsWindow : Window
     private readonly HomeViewModel _home;
     private readonly Func<IReadOnlyList<HotkeyBinding>> _applyHotkeys; // вернёт сочетания, которые занял кто-то другой
     private readonly ObservableCollection<HotkeyBinding> _hotkeys;
+    private readonly VoiceService _voice;
+    private readonly Func<Task<string?>> _applyVoice;
     private uint _capturedModifiers, _capturedKey;
+    private bool _loadingVoice;
+    private CancellationTokenSource? _download;
 
-    public SettingsWindow(AppSettings settings, HomeViewModel home, Func<IReadOnlyList<HotkeyBinding>> applyHotkeys)
+    public SettingsWindow(AppSettings settings, HomeViewModel home, Func<IReadOnlyList<HotkeyBinding>> applyHotkeys,
+        VoiceService voice, Func<Task<string?>> applyVoice)
     {
         _settings = settings;
         _home = home;
         _applyHotkeys = applyHotkeys;
+        _voice = voice;
+        _applyVoice = applyVoice;
         InitializeComponent();
 
         ExtendsContentIntoTitleBar = true;
@@ -46,6 +53,7 @@ public sealed partial class SettingsWindow : Window
         _hotkeys = new ObservableCollection<HotkeyBinding>(settings.Hotkeys);
         HotkeyList.ItemsSource = _hotkeys;
         UpdateStatus();
+        LoadVoice();
         _ = LoadTargetsAsync();
     }
 
@@ -152,12 +160,152 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
+    // ---------- голос ----------
+
+    private void LoadVoice()
+    {
+        _loadingVoice = true;
+        VoiceModeBox.SelectedIndex = (int)_settings.VoiceMode;
+        VoiceKeyBox.Text = _settings.VoiceKey == 0 ? "" : HotkeyText.Format(_settings.VoiceModifiers, _settings.VoiceKey);
+        WakeWordsBox.Text = _settings.WakeWords;
+        _loadingVoice = false;
+        UpdateVoicePanels();
+        UpdateModelStatus();
+
+        // Что слышит микрофон в режиме ожидания — чтобы подобрать варианты «Хоуми».
+        Action<string> heard = text => HeardText.Text = $"Услышал: «{text}»";
+        _voice.Heard += heard;
+        Closed += (_, _) =>
+        {
+            _voice.Heard -= heard;
+            _download?.Cancel();
+        };
+    }
+
+    private void UpdateVoicePanels()
+    {
+        var mode = _settings.VoiceMode;
+        VoiceKeyPanel.Visibility = mode is VoiceMode.PushToTalk or VoiceMode.Both ? Visibility.Visible : Visibility.Collapsed;
+        WakePanel.Visibility = mode is VoiceMode.WakeWord or VoiceMode.Both ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateModelStatus()
+    {
+        bool installed = VoiceService.IsModelInstalled;
+        ModelStatus.Text = installed ? "✓ Модель распознавания речи установлена" : "Нужна модель распознавания русской речи (~45 МБ, скачивается один раз)";
+        ModelButton.Visibility = installed ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private async void DownloadModel_Click(object sender, RoutedEventArgs e)
+    {
+        ModelButton.IsEnabled = false;
+        ModelProgress.Visibility = Visibility.Visible;
+        ModelProgress.Value = 0;
+        ModelStatus.Text = "Скачиваю модель…";
+        _download = new CancellationTokenSource();
+        try
+        {
+            var progress = new Progress<double>(p =>
+            {
+                ModelProgress.Value = p;
+                ModelStatus.Text = p < 1 ? $"Скачиваю модель… {p:P0}" : "Распаковываю…";
+            });
+            await VoiceService.DownloadModelAsync(progress, _download.Token);
+            UpdateModelStatus();
+            await ApplyVoiceAsync();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            ModelStatus.Text = "Не удалось скачать: " + ex.Message;
+        }
+        finally
+        {
+            ModelButton.IsEnabled = true;
+            ModelProgress.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private async void VoiceMode_SelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
+    {
+        if (_loadingVoice || VoiceModeBox.SelectedIndex < 0) return;
+        _settings.VoiceMode = (VoiceMode)VoiceModeBox.SelectedIndex;
+        SettingsStore.Save(_settings);
+        UpdateVoicePanels();
+        await ApplyVoiceAsync();
+    }
+
+    private async void VoiceKeyBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (HotkeyText.IsModifier(e.Key)) return;
+        uint mods = CurrentModifiers();
+        _settings.VoiceModifiers = mods;
+        _settings.VoiceKey = (uint)e.Key;
+        SettingsStore.Save(_settings);
+        VoiceKeyBox.Text = HotkeyText.Format(mods, (uint)e.Key);
+        string? error = await ApplyVoiceAsync();
+        if (error is null && mods == 0 && e.Key is >= VirtualKey.A and <= VirtualKey.Z or >= VirtualKey.Number0 and <= VirtualKey.Number9 or VirtualKey.Space)
+            VoiceError.Text = "Эта клавиша перестанет печатать в других программах — лучше выбрать F13–F24, Pause или сочетание";
+    }
+
+    private void PcRoomBox_SelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
+    {
+        if (_loadingVoice || PcRoomBox.SelectedItem is not Room room) return;
+        _settings.PcRoomId = room.Id.Length == 0 ? null : room.Id;
+        SettingsStore.Save(_settings);
+    }
+
+    private async void WakeWordsBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (WakeWordsBox.Text == _settings.WakeWords) return;
+        _settings.WakeWords = WakeWordsBox.Text;
+        SettingsStore.Save(_settings);
+        await ApplyVoiceAsync();
+    }
+
+    private void LoadPcRooms()
+    {
+        if (_home.Data is not { } data) return;
+        string? household = _home.SelectedHousehold?.Id;
+        var rooms = new List<Room> { new("", "Не выбрана — во всём доме", null) };
+        rooms.AddRange(data.Rooms.Where(r => household is null || r.HouseholdId is null || r.HouseholdId == household).OrderBy(r => r.Name));
+        _loadingVoice = true;
+        PcRoomBox.ItemsSource = rooms;
+        PcRoomBox.SelectedItem = rooms.FirstOrDefault(r => r.Id == (_settings.PcRoomId ?? "")) ?? rooms[0];
+        _loadingVoice = false;
+    }
+
+    private async Task<string?> ApplyVoiceAsync()
+    {
+        VoiceError.Text = "";
+        string? error = await _applyVoice();
+        VoiceError.Text = error ?? "";
+        return error;
+    }
+
+    private static uint CurrentModifiers()
+    {
+        uint mods = 0;
+        if (IsDown(VirtualKey.Control)) mods |= Win32.MOD_CONTROL;
+        if (IsDown(VirtualKey.Menu)) mods |= Win32.MOD_ALT;
+        if (IsDown(VirtualKey.Shift)) mods |= Win32.MOD_SHIFT;
+        if (IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows)) mods |= Win32.MOD_WIN;
+        return mods;
+
+        static bool IsDown(VirtualKey key) =>
+            InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
+    }
+
     // ---------- горячие клавиши ----------
 
     private async Task LoadTargetsAsync()
     {
         if (_home.Data is null && _home.IsSignedIn) await _home.RefreshAsync();
         BuildRoomOrder();
+        LoadPcRooms();
         var options = new List<TargetOption>();
         if (_home.Data is { } data)
         {
