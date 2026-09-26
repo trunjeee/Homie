@@ -13,13 +13,17 @@
             <FontFamily x:Key="AppFontSemiBold">ms-appx:///Assets/Fonts/Manrope-SemiBold.ttf#Manrope</FontFamily>
             <FontFamily x:Key="ContentControlThemeFontFamily">ms-appx:///Assets/Fonts/Manrope-Medium.ttf#Manrope</FontFamily>
 
-            <!-- Кнопки — как в TouchControl: тёмное стекло, наведение светлее -->
-            <SolidColorBrush x:Key="ButtonBackground" Color="#99212426" />
-            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#38FFFFFF" />
-            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#B3181A1C" />
-            <SolidColorBrush x:Key="ButtonBorderBrush" Color="#FF434446" />
-            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#FF6E7072" />
-            <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#FF434446" />
+            <!-- Лёгкое стекло для кнопок, плиток и строк: едва заметный фон и тонкая рамка, наведение светлее -->
+            <SolidColorBrush x:Key="GlassBrush" Color="#12FFFFFF" />
+            <SolidColorBrush x:Key="GlassHoverBrush" Color="#22FFFFFF" />
+            <SolidColorBrush x:Key="GlassBorderBrush" Color="#12FFFFFF" />
+
+            <SolidColorBrush x:Key="ButtonBackground" Color="#12FFFFFF" />
+            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#22FFFFFF" />
+            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#0AFFFFFF" />
+            <SolidColorBrush x:Key="ButtonBorderBrush" Color="#12FFFFFF" />
+            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#20FFFFFF" />
+            <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#12FFFFFF" />
             <SolidColorBrush x:Key="ButtonForeground" Color="White" />
             <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
             <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#D9FFFFFF" />
@@ -55,9 +59,18 @@
             <SolidColorBrush x:Key="SliderTrackFill" Color="#24FFFFFF" />
             <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#33FFFFFF" />
 
-            <Style x:Key="TileButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <!-- Всплывающая палитра/яркость — такое же стекло, как панель -->
+            <Style x:Key="GlassFlyoutPresenter" TargetType="FlyoutPresenter">
+                <Setter Property="Background" Value="#F21C1D1F" />
+                <Setter Property="BorderBrush" Value="#1AFFFFFF" />
+                <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="CornerRadius" Value="14" />
-                <Setter Property="BorderThickness" Value="1.5" />
+                <Setter Property="Padding" Value="16,14" />
+            </Style>
+
+            <Style x:Key="TileButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
                 <Setter Property="FontFamily" Value="{StaticResource AppFontSemiBold}" />

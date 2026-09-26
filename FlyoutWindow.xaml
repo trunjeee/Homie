@@ -39,14 +39,14 @@
             </Style>
             <!-- Кружок текущего цвета лампы: клик — палитра -->
             <Style x:Key="ColorDot" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-                <Setter Property="Width" Value="18" />
-                <Setter Property="Height" Value="18" />
+                <Setter Property="Width" Value="14" />
+                <Setter Property="Height" Value="14" />
                 <Setter Property="MinWidth" Value="0" />
                 <Setter Property="MinHeight" Value="0" />
                 <Setter Property="Padding" Value="0" />
-                <Setter Property="CornerRadius" Value="9" />
-                <Setter Property="BorderThickness" Value="1.5" />
-                <Setter Property="BorderBrush" Value="#66FFFFFF" />
+                <Setter Property="CornerRadius" Value="7" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="#33FFFFFF" />
             </Style>
 
             <!-- ===== Вид «плитки»: иконка слева вверху, переключатель справа вверху, текст внизу ===== -->
@@ -58,26 +58,26 @@
                         FontSize="13"
                         Foreground="#B3FFFFFF"
                         Text="{x:Bind Name}" />
-                    <ItemsControl ItemsSource="{x:Bind Devices}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <ItemsWrapGrid
-                                    ItemHeight="98"
-                                    ItemWidth="170"
-                                    MaximumRowsOrColumns="2"
-                                    Orientation="Horizontal" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
+                    <!-- Сетка сама делит ширину на 2 колонки — плитки всегда по две в ряд -->
+                    <ItemsRepeater ItemsSource="{x:Bind Devices}">
+                        <ItemsRepeater.Layout>
+                            <UniformGridLayout
+                                ItemsStretch="Fill"
+                                MaximumRowsOrColumns="2"
+                                MinColumnSpacing="8"
+                                MinItemHeight="92"
+                                MinItemWidth="140"
+                                MinRowSpacing="8" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="vm:DeviceItem">
                                 <Grid
-                                    Width="164"
                                     Height="92"
                                     Padding="14,10,8,12"
-                                    Background="#99212426"
-                                    BorderBrush="#FF434446"
-                                    BorderThickness="1.5"
-                                    CornerRadius="14"
+                                    Background="{StaticResource GlassBrush}"
+                                    BorderBrush="{StaticResource GlassBorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="12"
                                     PointerEntered="Tile_PointerEntered"
                                     PointerExited="Tile_PointerExited"
                                     RightTapped="Device_RightTapped"
@@ -95,15 +95,9 @@
                                     </Grid.RowDefinitions>
                                     <StackPanel VerticalAlignment="Top" Orientation="Horizontal" Spacing="8">
                                         <FontIcon Margin="0,4,0,0" FontSize="18" Glyph="{x:Bind Glyph}" />
-                                        <Button
-                                            Margin="0,5,0,0"
+                                        <Border Margin="0,5,0,0"
                                             VerticalAlignment="Top"
-                                            AutomationProperties.Name="Цвет"
-                                            Background="{x:Bind ColorBrush, Mode=OneWay}"
-                                            Click="Color_Click"
-                                            Style="{StaticResource ColorDot}"
-                                            Tag="{x:Bind}"
-                                            Visibility="{x:Bind HasColorOrWhite}" />
+                                            Width="14" Height="14" CornerRadius="7" BorderThickness="1" BorderBrush="#33FFFFFF" Background="{x:Bind ColorBrush, Mode=OneWay}" Tapped="ColorDot_Tapped" Tag="{x:Bind}" ToolTipService.ToolTip="Цвет" Visibility="{x:Bind HasColorOrWhite}" />
                                     </StackPanel>
                                     <ToggleSwitch
                                         MinWidth="0"
@@ -130,8 +124,8 @@
                                         TextTrimming="CharacterEllipsis" />
                                 </Grid>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
                 </StackPanel>
             </DataTemplate>
 
@@ -154,11 +148,13 @@
                             <DataTemplate x:DataType="vm:DeviceItem">
                                 <Grid
                                     Padding="14,10,10,10"
-                                    Background="#99212426"
-                                    BorderBrush="#FF434446"
+                                    Background="{StaticResource GlassBrush}"
+                                    BorderBrush="{StaticResource GlassBorderBrush}"
                                     BorderThickness="1"
                                     ColumnSpacing="12"
-                                    CornerRadius="14"
+                                    CornerRadius="12"
+                                    PointerEntered="Tile_PointerEntered"
+                                    PointerExited="Tile_PointerExited"
                                     RightTapped="Device_RightTapped"
                                     RowSpacing="2"
                                     Tag="{x:Bind}">
@@ -191,15 +187,9 @@
                                             Text="{x:Bind Subtitle, Mode=OneWay}"
                                             TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
-                                    <Button
-                                        Grid.Column="2"
+                                    <Border Grid.Column="2"
                                         VerticalAlignment="Center"
-                                        AutomationProperties.Name="Цвет"
-                                        Background="{x:Bind ColorBrush, Mode=OneWay}"
-                                        Click="Color_Click"
-                                        Style="{StaticResource ColorDot}"
-                                        Tag="{x:Bind}"
-                                        Visibility="{x:Bind HasColorOrWhite}" />
+                                        Width="14" Height="14" CornerRadius="7" BorderThickness="1" BorderBrush="#33FFFFFF" Background="{x:Bind ColorBrush, Mode=OneWay}" Tapped="ColorDot_Tapped" Tag="{x:Bind}" ToolTipService.ToolTip="Цвет" Visibility="{x:Bind HasColorOrWhite}" />
                                     <ToggleSwitch
                                         Grid.Column="3"
                                         MinWidth="0"
@@ -323,20 +313,21 @@
 
                 <StackPanel Visibility="{x:Bind HasItems(Home.Scenarios.Count), Mode=OneWay}">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Сценарии" />
-                    <ItemsControl ItemsSource="{x:Bind Home.Scenarios}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <ItemsWrapGrid
-                                    ItemHeight="58"
-                                    ItemWidth="113"
-                                    MaximumRowsOrColumns="3"
-                                    Orientation="Horizontal" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
+                    <!-- Ровно 3 сценария в ряд — ширина делится сама -->
+                    <ItemsRepeater ItemsSource="{x:Bind Home.Scenarios}">
+                        <ItemsRepeater.Layout>
+                            <UniformGridLayout
+                                ItemsStretch="Fill"
+                                MaximumRowsOrColumns="3"
+                                MinColumnSpacing="8"
+                                MinItemHeight="52"
+                                MinItemWidth="90"
+                                MinRowSpacing="8" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="services:Scenario">
                                 <Button
-                                    Margin="0,0,6,6"
+                                    Height="52"
                                     Padding="8,4"
                                     VerticalAlignment="Stretch"
                                     Click="Scenario_Click"
@@ -354,8 +345,8 @@
                                         TextWrapping="Wrap" />
                                 </Button>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
                 </StackPanel>
 
                 <ItemsControl x:Name="RoomsList" ItemsSource="{x:Bind Home.Rooms}">

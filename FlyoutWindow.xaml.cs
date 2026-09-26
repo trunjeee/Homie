@@ -23,6 +23,17 @@ public sealed partial class FlyoutWindow : Window
     private readonly Win32.SUBCLASSPROC _wndProc;
     private readonly Action _openSettings;
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _refreshTimer;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _focusWatch;
+    private readonly nint _initialForeground;
+    private bool _wasForeground;
+
+    /// <summary>Закрыться, когда пользователь ушёл в другое окно (кликнул мимо панели).</summary>
+    private void WatchFocus()
+    {
+        nint fg = Win32.GetAncestor(Win32.GetForegroundWindow(), Win32.GA_ROOTOWNER);
+        if (fg == _hwnd) { _wasForeground = true; return; }
+        if (_wasForeground || (fg != 0 && fg != _initialForeground)) Close();
+    }
 
     public HomeViewModel Home { get; }
 
@@ -71,10 +82,20 @@ public sealed partial class FlyoutWindow : Window
         {
             if (e.WindowActivationState == WindowActivationState.Deactivated) Close(); // клик мимо
         };
+
+        // Окно, открытое из трея, Windows может не сделать активным — тогда «клик мимо» не придёт.
+        // Поэтому явно забираем фокус и дополнительно следим: фокус ушёл в другое окно — закрываемся.
+        _initialForeground = Win32.GetAncestor(Win32.GetForegroundWindow(), Win32.GA_ROOTOWNER);
+        _focusWatch = DispatcherQueue.CreateTimer();
+        _focusWatch.Interval = TimeSpan.FromMilliseconds(250);
+        _focusWatch.Tick += (_, _) => WatchFocus();
+        _focusWatch.Start();
+        Root.Loaded += (_, _) => Win32.SetForegroundWindow(_hwnd);
         Closed += (_, _) =>
         {
             Home.PropertyChanged -= OnHomeChanged;
             _refreshTimer.Stop();
+            _focusWatch.Stop();
             Win32.RemoveWindowSubclass(_hwnd, _wndProc, 1);
         };
     }
@@ -115,13 +136,10 @@ public sealed partial class FlyoutWindow : Window
 
     // ---------- плитки: наведение светлее, как у кнопок ----------
 
-    private static readonly Microsoft.UI.Xaml.Media.Brush TileBrush =
-        new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x99, 0x21, 0x24, 0x26));
-    private static readonly Microsoft.UI.Xaml.Media.Brush TileHoverBrush =
-        new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));
+    private static Microsoft.UI.Xaml.Media.Brush Res(string key) => (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[key];
 
-    private void Tile_PointerEntered(object sender, PointerRoutedEventArgs e) => ((Grid)sender).Background = TileHoverBrush;
-    private void Tile_PointerExited(object sender, PointerRoutedEventArgs e) => ((Grid)sender).Background = TileBrush;
+    private void Tile_PointerEntered(object sender, PointerRoutedEventArgs e) => ((Grid)sender).Background = Res("GlassHoverBrush");
+    private void Tile_PointerExited(object sender, PointerRoutedEventArgs e) => ((Grid)sender).Background = Res("GlassBrush");
 
     // ---------- цвет и яркость ----------
 
@@ -139,8 +157,9 @@ public sealed partial class FlyoutWindow : Window
 
     private static readonly (string Name, int Kelvin)[] Whites = [("Тёплый", 2700), ("Нейтральный", 4500), ("Холодный", 6500)];
 
-    private void Color_Click(object sender, RoutedEventArgs e)
+    private void ColorDot_Tapped(object sender, TappedRoutedEventArgs e)
     {
+        e.Handled = true;
         if ((sender as FrameworkElement)?.Tag is DeviceItem item) ShowDetails(item, (FrameworkElement)sender, withBrightness: false);
     }
 
@@ -156,22 +175,33 @@ public sealed partial class FlyoutWindow : Window
 
     private void ShowDetails(DeviceItem item, FrameworkElement anchor, bool withBrightness)
     {
-        var panel = new StackPanel { Spacing = 12, Width = 232 };
-        panel.Children.Add(new TextBlock { Text = item.Name, FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["AppFontSemiBold"], FontSize = 14 });
+        var dim = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF));
+        var panel = new StackPanel { Spacing = 10 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = item.Name, FontSize = 14,
+            FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["AppFontSemiBold"],
+        });
+
+        var flyout = new Flyout
+        {
+            Content = panel,
+            Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom,
+            FlyoutPresenterStyle = (Style)Application.Current.Resources["GlassFlyoutPresenter"],
+        };
 
         if (withBrightness && item.HasBrightness)
         {
-            var slider = new Slider { Header = "Яркость", Minimum = 1, Maximum = 100, Value = item.Brightness };
-            slider.ValueChanged += (_, args) => item.Brightness = args.NewValue; // отправится с задержкой, когда ползунок остановится
+            panel.Children.Add(new TextBlock { Text = "Яркость", FontSize = 12, Foreground = dim });
+            var slider = new Slider { Minimum = 1, Maximum = 100, Value = item.Brightness, Width = 274 };
+            slider.ValueChanged += (_, args) => item.Brightness = args.NewValue; // отправится, когда ползунок остановится
             panel.Children.Add(slider);
         }
 
-        var flyout = new Flyout { Content = panel, Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
-
         if (item.HasColor)
         {
-            panel.Children.Add(new TextBlock { Text = "Цвет", FontSize = 12, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)) });
-            var colors = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, MaximumRowsOrColumns = 4, ItemWidth = 58, ItemHeight = 40 };
+            panel.Children.Add(new TextBlock { Text = "Цвет", FontSize = 12, Foreground = dim });
+            var colors = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             foreach (var (name, color) in Palette)
                 colors.Children.Add(Swatch(name, color, () => { flyout.Hide(); _ = item.SetColorAsync(color); }));
             panel.Children.Add(colors);
@@ -179,30 +209,33 @@ public sealed partial class FlyoutWindow : Window
 
         if (item.HasWhite)
         {
-            panel.Children.Add(new TextBlock { Text = "Белый", FontSize = 12, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)) });
+            panel.Children.Add(new TextBlock { Text = "Белый", FontSize = 12, Foreground = dim });
             var whites = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             foreach (var (name, kelvin) in Whites)
-                whites.Children.Add(Swatch(name, DeviceItem.WhiteFor(kelvin), () => { flyout.Hide(); _ = item.SetWhiteAsync(kelvin); }, labeled: true));
+                whites.Children.Add(Swatch(name, DeviceItem.WhiteFor(kelvin), () => { flyout.Hide(); _ = item.SetWhiteAsync(kelvin); }));
             panel.Children.Add(whites);
         }
 
         flyout.ShowAt(anchor);
     }
 
-    /// <summary>Кружок палитры (для белого — с подписью).</summary>
-    private static FrameworkElement Swatch(string name, Windows.UI.Color color, Action onClick, bool labeled = false)
+    /// <summary>Аккуратный кружок палитры; название — во всплывающей подсказке.</summary>
+    private static FrameworkElement Swatch(string name, Windows.UI.Color color, Action onClick)
     {
+        var fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(color);
         var button = new Button
         {
-            Width = labeled ? 72 : 34,
-            Height = 34,
+            Width = 26, Height = 26, MinWidth = 0, MinHeight = 0,
             Padding = new Thickness(0),
-            CornerRadius = new CornerRadius(17),
-            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(color),
-            BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
-            BorderThickness = new Thickness(1.5),
-            Content = labeled ? new TextBlock { Text = name, FontSize = 11, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Black) } : null,
+            CornerRadius = new CornerRadius(13),
+            Background = fill,
+            BorderBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(1),
         };
+        // Наведение не должно перекрашивать кружок в серый — оставляем его цвет.
+        button.Resources["ButtonBackgroundPointerOver"] = fill;
+        button.Resources["ButtonBackgroundPressed"] = fill;
+        button.Resources["ButtonBorderBrushPointerOver"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White);
         ToolTipService.SetToolTip(button, name);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, name);
         button.Click += (_, _) => onClick();

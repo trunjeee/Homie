@@ -62,6 +62,12 @@ internal static partial class Win32
     [DllImport("user32.dll")]
     public static extern nint GetForegroundWindow();
 
+    public const uint GA_ROOTOWNER = 3;
+
+    /// <summary>Главное окно-владелец (всплывающие меню и палитры сводятся к своему окну).</summary>
+    [DllImport("user32.dll")]
+    public static extern nint GetAncestor(nint hwnd, uint gaFlags);
+
     /// <summary>Видимые главные окна (без владельца) указанных процессов.</summary>
     public static List<nint> GetVisibleTopLevelWindows(IReadOnlySet<uint> processIds)
     {
