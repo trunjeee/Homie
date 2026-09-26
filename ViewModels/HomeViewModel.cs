@@ -23,8 +23,58 @@ public sealed partial class DeviceItem : ObservableObject
     public bool HasColor => Device.Color?.SupportsColor == true;
     public bool HasWhite => Device.Color?.SupportsWhite == true;
     public bool HasColorOrWhite => HasColor || HasWhite;
-    /// <summary>Есть что показать в «подробностях» плитки (правый клик).</summary>
-    public bool HasDetails => HasBrightness || HasColorOrWhite;
+    /// <summary>Есть что показать в «подробностях» (клик по плитке): яркость, цвет или показания датчиков.</summary>
+    public bool HasDetails => HasBrightness || HasColorOrWhite || Device.Properties.Any(p => p.Value is not null);
+
+    /// <summary>Все показания с подписями — для подробностей и подсказки при наведении.</summary>
+    public IReadOnlyList<(string Label, string Value)> Readings => Device.Properties
+        .Where(p => p.Value is not null)
+        .Select(p => (ReadingLabel(p.Instance), FormatReading(p)))
+        .ToList();
+
+    public string? ReadingsTooltip => Readings.Count == 0 ? null : string.Join("\n", Readings.Select(r => $"{r.Label}: {r.Value}"));
+
+    private static string ReadingLabel(string instance) => instance switch
+    {
+        "temperature" => "Температура",
+        "humidity" => "Влажность",
+        "co2_level" => "CO₂",
+        "battery_level" => "Заряд",
+        "power" => "Мощность",
+        "voltage" => "Напряжение",
+        "amperage" => "Ток",
+        "illumination" => "Освещённость",
+        "pressure" => "Давление",
+        "pm1_density" => "PM1",
+        "pm2.5_density" => "PM2.5",
+        "pm10_density" => "PM10",
+        "tvoc" => "Летучие вещества",
+        "water_level" => "Уровень воды",
+        "food_level" => "Уровень корма",
+        "meter" => "Счётчик",
+        _ => instance,
+    };
+
+    private static string FormatReading(Property p)
+    {
+        string v = p.Value!.Value.ToString("0.#", CultureInfo.InvariantCulture);
+        string unit = p.Unit switch
+        {
+            "unit.temperature.celsius" => " °C",
+            "unit.temperature.kelvin" => " K",
+            "unit.percent" => "%",
+            "unit.ppm" => " ppm",
+            "unit.watt" => " Вт",
+            "unit.volt" => " В",
+            "unit.ampere" => " А",
+            "unit.illumination.lux" => " лк",
+            "unit.pressure.mmhg" => " мм рт. ст.",
+            "unit.pressure.pascal" => " Па",
+            "unit.density.mcg_m3" => " мкг/м³",
+            _ => p.Instance switch { "temperature" => " °C", "humidity" or "battery_level" => "%", "co2_level" => " ppm", "power" => " Вт", _ => "" },
+        };
+        return v + unit;
+    }
 
     [ObservableProperty] public partial bool IsOn { get; set; }
     [ObservableProperty] public partial double Brightness { get; set; }
@@ -60,6 +110,7 @@ public sealed partial class DeviceItem : ObservableObject
         _syncing = false;
         Subtitle = BuildSubtitle(device);
         StateText = BuildStateText(device);
+        OnPropertyChanged(nameof(ReadingsTooltip));
         var color = CurrentColor(device);
         ColorBrush = color is { } c ? new SolidColorBrush(c) : null;
     }

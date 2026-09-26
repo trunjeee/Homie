@@ -200,8 +200,9 @@ public sealed class SmartHomeApi(Func<string?> tokenProvider) : IDisposable
                 instance = OptStr(state, "instance") ?? "";
                 if (state.TryGetProperty("value", out var v) && v.ValueKind == JsonValueKind.Number) value = v.GetDouble();
             }
-            string? unit = p.TryGetProperty("parameters", out var par) && par.ValueKind == JsonValueKind.Object ? OptStr(par, "unit") : null;
-            if (string.IsNullOrEmpty(instance) && par.ValueKind == JsonValueKind.Object) instance = OptStr(par, "instance") ?? "";
+            bool hasParams = p.TryGetProperty("parameters", out var par) && par.ValueKind == JsonValueKind.Object;
+            string? unit = hasParams ? OptStr(par, "unit") : null;
+            if (string.IsNullOrEmpty(instance) && hasParams) instance = OptStr(par, "instance") ?? "";
             return new Property(instance, value, unit);
         }).ToList();
 

@@ -163,7 +163,17 @@ public sealed partial class FlyoutWindow : Window
         if ((sender as FrameworkElement)?.Tag is DeviceItem item) ShowDetails(item, (FrameworkElement)sender, withBrightness: false);
     }
 
-    /// <summary>Правый клик (или долгое нажатие пальцем) по устройству — яркость и цвет.</summary>
+    /// <summary>Клик по плитке (не по переключателю) — подробности: яркость, цвет, показания датчиков.</summary>
+    private void Tile_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        for (var el = e.OriginalSource as DependencyObject; el is not null && el != sender; el = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(el))
+            if (el is ToggleSwitch) return; // переключатель сам включает/выключает
+
+        if ((sender as FrameworkElement)?.Tag is DeviceItem { HasDetails: true } item)
+            ShowDetails(item, (FrameworkElement)sender, withBrightness: true);
+    }
+
+    /// <summary>Правый клик (или долгое нажатие пальцем) по устройству — то же самое.</summary>
     private void Device_RightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.Tag is DeviceItem { HasDetails: true } item)
@@ -189,6 +199,30 @@ public sealed partial class FlyoutWindow : Window
             Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom,
             FlyoutPresenterStyle = (Style)Application.Current.Resources["GlassFlyoutPresenter"],
         };
+
+        // Показания датчиков: подпись слева, значение справа.
+        if (withBrightness && item.Readings.Count > 0)
+        {
+            var table = new Grid { ColumnSpacing = 24, RowSpacing = 6, MinWidth = 220 };
+            table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            table.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            for (int i = 0; i < item.Readings.Count; i++)
+            {
+                table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var label = new TextBlock { Text = item.Readings[i].Label, FontSize = 13, Foreground = dim };
+                var value = new TextBlock
+                {
+                    Text = item.Readings[i].Value, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Right,
+                    FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["AppFontSemiBold"],
+                };
+                Grid.SetRow(label, i);
+                Grid.SetRow(value, i);
+                Grid.SetColumn(value, 1);
+                table.Children.Add(label);
+                table.Children.Add(value);
+            }
+            panel.Children.Add(table);
+        }
 
         if (withBrightness && item.HasBrightness)
         {

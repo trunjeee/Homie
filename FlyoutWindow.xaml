@@ -81,7 +81,9 @@
                                     PointerEntered="Tile_PointerEntered"
                                     PointerExited="Tile_PointerExited"
                                     RightTapped="Device_RightTapped"
-                                    Tag="{x:Bind}">
+                                    Tag="{x:Bind}"
+                                    Tapped="Tile_Tapped"
+                                    ToolTipService.ToolTip="{x:Bind ReadingsTooltip, Mode=OneWay}">
                                     <Grid.Resources>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="FontFamily" Value="{StaticResource AppFont}" />
