@@ -32,11 +32,14 @@ public sealed record Capability(string Type, string Instance, bool Retrievable, 
 public sealed record Property(string Instance, double? Value, string? Unit);
 
 public sealed record Device(string Id, string Name, string Type, string? RoomId, string? HouseholdId,
-    IReadOnlyList<Capability> Capabilities, IReadOnlyList<Property> Properties, bool IsGroup = false)
+    IReadOnlyList<Capability> Capabilities, IReadOnlyList<Property> Properties, bool IsGroup = false,
+    IReadOnlyList<string>? MemberIds = null, bool IsLocal = false)
 {
     public Capability? OnOff => Capabilities.FirstOrDefault(c => c.IsOnOff);
     public Capability? Color => Capabilities.FirstOrDefault(c => c.IsColor && (c.SupportsColor || c.SupportsWhite));
     public Capability? Range(string instance) => Capabilities.FirstOrDefault(c => c.IsRange && c.Instance == instance);
+    /// <summary>Устройства группы (у Яндекса — из ответа API, у своих групп Homie — из настроек).</summary>
+    public IReadOnlyList<string> Members => MemberIds ?? [];
 }
 
 public sealed record HomeData(
@@ -80,6 +83,7 @@ public sealed class SmartHomeApi(Func<string?> tokenProvider) : IDisposable
     /// <summary>Цвет лампы: в модели самой лампы (hsv или rgb).</summary>
     public Task SetColorAsync(Device device, Windows.UI.Color color, CancellationToken ct = default)
     {
+        if (device.IsLocal) return ForMembers(device, m => SetColorAsync(m, color, ct)); // у ламп может быть разная модель цвета
         var model = device.Color?.ColorModel ?? "hsv";
         JsonNode value;
         if (model == "rgb")
@@ -101,6 +105,7 @@ public sealed class SmartHomeApi(Func<string?> tokenProvider) : IDisposable
     /// <summary>Оттенок белого в кельвинах (2700 — тёплый, 6500 — холодный), в пределах лампы.</summary>
     public Task SetWhiteAsync(Device device, int kelvin, CancellationToken ct = default)
     {
+        if (device.IsLocal) return ForMembers(device, m => SetWhiteAsync(m, kelvin, ct)); // у каждой лампы свой диапазон
         var c = device.Color;
         int k = c is null ? kelvin : Math.Clamp(kelvin, c.TemperatureMin, c.TemperatureMax);
         return ActAsync(device, new JsonObject
@@ -124,9 +129,23 @@ public sealed class SmartHomeApi(Func<string?> tokenProvider) : IDisposable
         using var _ = await SendAsync(HttpMethod.Post, $"scenarios/{Uri.EscapeDataString(scenarioId)}/actions", null, ct);
     }
 
+    private Task ForMembers(Device group, Func<Device, Task> action) =>
+        Task.WhenAll(group.Members.Select(id => Resolve?.Invoke(id)).OfType<Device>().Select(action));
+
+    /// <summary>Найти устройство по ID — для своих групп Homie (их команды уходят каждому устройству).</summary>
+    public Func<string, Device?>? Resolve { get; set; }
+
     /// <summary>Одно действие для устройства или для всей группы.</summary>
     private async Task ActAsync(Device device, JsonObject action, CancellationToken ct)
     {
+        if (device.IsLocal)
+        {
+            // Своей группы Homie Яндекс не знает — отправляем команду каждому устройству.
+            var members = device.Members.Select(id => Resolve?.Invoke(id)).OfType<Device>().ToList();
+            await Task.WhenAll(members.Select(m => ActAsync(m, (JsonObject)action.DeepClone(), ct)));
+            return;
+        }
+
         JsonObject body;
         string path;
         if (device.IsGroup)
@@ -207,8 +226,13 @@ public sealed class SmartHomeApi(Func<string?> tokenProvider) : IDisposable
         }).ToList();
 
         string? roomId = OptStr(d, "room");
+        // У группы — список её устройств (строки-ID или объекты с id).
+        List<string>? members = isGroup
+            ? Array(d, "devices").Select(m => m.ValueKind == JsonValueKind.String ? m.GetString() ?? "" : Str(m, "id"))
+                .Where(id => id.Length > 0).ToList()
+            : null;
         return new Device(Str(d, "id"), Str(d, "name"), OptStr(d, "type") ?? "", roomId, OptStr(d, "household_id"),
-            capabilities, properties, isGroup);
+            capabilities, properties, isGroup, members);
     }
 
     private static IEnumerable<JsonElement> Array(JsonElement e, string name) =>

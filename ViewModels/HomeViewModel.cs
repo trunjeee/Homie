@@ -24,7 +24,7 @@ public sealed partial class DeviceItem : ObservableObject
     public bool HasWhite => Device.Color?.SupportsWhite == true;
     public bool HasColorOrWhite => HasColor || HasWhite;
     /// <summary>Есть что показать в «подробностях» (клик по плитке): яркость, цвет или показания датчиков.</summary>
-    public bool HasDetails => HasBrightness || HasColorOrWhite || Device.Properties.Any(p => p.Value is not null);
+    public bool HasDetails => HasBrightness || HasColorOrWhite || Device.Members.Count > 0 || Device.Properties.Any(p => p.Value is not null);
 
     /// <summary>Все показания с подписями — для подробностей и подсказки при наведении.</summary>
     public IReadOnlyList<(string Label, string Value)> Readings => Device.Properties
@@ -221,6 +221,7 @@ public sealed partial class HomeViewModel : ObservableObject, IDisposable
     private readonly AppSettings _settings;
     private readonly SmartHomeApi _api;
     private HomeData? _data;
+    private HomeData? _raw; // как пришло из Яндекса — из него пересобираем группы при изменении настроек
 
     public ObservableCollection<Scenario> Scenarios { get; } = [];
     public ObservableCollection<RoomGroup> Rooms { get; } = [];
@@ -242,7 +243,7 @@ public sealed partial class HomeViewModel : ObservableObject, IDisposable
     {
         _dispatcher = dispatcher;
         _settings = settings;
-        _api = new SmartHomeApi(SettingsStore.LoadToken);
+        _api = new SmartHomeApi(SettingsStore.LoadToken) { Resolve = id => _data?.Devices.FirstOrDefault(d => d.Id == id) };
         IsSignedIn = SettingsStore.LoadToken() is not null;
         TilesView = settings.TilesView;
     }
@@ -267,7 +268,8 @@ public sealed partial class HomeViewModel : ObservableObject, IDisposable
         IsLoading = true;
         try
         {
-            _data = await _api.GetHomeAsync();
+            _raw = await _api.GetHomeAsync();
+            _data = WithGroups(_raw);
             _loadedAt = DateTime.Now;
             IsSignedIn = true;
             ErrorText = null;
@@ -322,7 +324,8 @@ public sealed partial class HomeViewModel : ObservableObject, IDisposable
         BuildRooms(force: true);
     }
 
-    private static string KeyOf(Device d) => d.IsGroup ? GroupsKey : d.RoomId ?? NoRoomKey;
+    // Группа — в комнате своих устройств (если они все в одной), иначе в разделе «Группы».
+    private static string KeyOf(Device d) => d.IsGroup ? d.RoomId ?? GroupsKey : d.RoomId ?? NoRoomKey;
 
     private string NameOf(string key) => key switch
     {
@@ -336,10 +339,95 @@ public sealed partial class HomeViewModel : ObservableObject, IDisposable
     {
         if (_data is null) return [];
         string? household = SelectedHousehold?.Id;
-        return _data.Devices
+        var devices = _data.Devices
             .Where(d => household is null || d.HouseholdId is null || d.HouseholdId == household)
             .Where(d => d.OnOff is not null || d.Properties.Count > 0)
             .ToList();
+        // Устройства, собранные в группу в своей комнате, прячем внутрь неё (как в приложении Яндекса).
+        var inGroups = devices.Where(d => d.IsGroup && d.RoomId is not null).SelectMany(d => d.Members).ToHashSet();
+        return devices.Where(d => d.IsGroup || !inGroups.Contains(d.Id)).ToList();
+    }
+
+    // ---------- группы ----------
+
+    /// <summary>
+    /// Группы Яндекса ставим в комнату их устройств и добавляем свои группы Homie
+    /// (их состояние — по устройствам: включена, если включено хоть одно).
+    /// </summary>
+    private HomeData WithGroups(HomeData raw)
+    {
+        var byId = raw.Devices.Where(d => !d.IsGroup).ToDictionary(d => d.Id);
+        List<Device> MembersOf(IEnumerable<string> ids) => ids.Select(id => byId.GetValueOrDefault(id)).OfType<Device>().ToList();
+        string? CommonRoom(List<Device> members) =>
+            members.Select(m => m.RoomId).Distinct().ToList() is [var only] ? only : null;
+
+        JsonElement Bool(bool value) => JsonDocument.Parse(value ? "true" : "false").RootElement.Clone();
+
+        // Группы Яндекса: комната — общая комната устройств; состояние «вкл», если включено хоть одно
+        // (Яндекс не всегда присылает состояние самой группы).
+        Device PlaceGroup(Device g)
+        {
+            var members = MembersOf(g.Members);
+            if (members.Count == 0) return g;
+            var caps = g.Capabilities.Select(c => c.IsOnOff && c.OnValue is null
+                ? c with { Value = Bool(members.Any(m => m.OnOff?.OnValue == true)) } : c).ToList();
+            return g with { RoomId = g.RoomId ?? CommonRoom(members), Capabilities = caps };
+        }
+        var devices = raw.Devices.Select(d => d.IsGroup ? PlaceGroup(d) : d).ToList();
+
+        foreach (var group in _settings.LocalGroups)
+        {
+            var members = MembersOf(group.MemberIds);
+            if (members.Count == 0 || string.IsNullOrWhiteSpace(group.Name)) continue;
+
+            var caps = new List<Capability>();
+            if (members.Any(m => m.OnOff is not null))
+            {
+                bool on = members.Any(m => m.OnOff?.OnValue == true);
+                caps.Add(new Capability("devices.capabilities.on_off", "on", true, Bool(on)));
+            }
+            if (members.All(m => m.Range("brightness") is not null)) caps.Add(members[0].Range("brightness")!);
+            if (members.All(m => m.Color is not null)) caps.Add(members[0].Color!);
+
+            string type = members.Select(m => m.Type).Distinct().Count() == 1 ? members[0].Type
+                : members.Any(m => m.Type.StartsWith("devices.types.light")) ? "devices.types.light" : members[0].Type;
+            devices.Add(new Device("local:" + group.Id, group.Name.Trim(), type, CommonRoom(members), members[0].HouseholdId,
+                caps, [], IsGroup: true, MemberIds: members.Select(m => m.Id).ToList(), IsLocal: true));
+        }
+        return raw with { Devices = devices };
+    }
+
+    /// <summary>Устройства группы — для списка в подробностях плитки.</summary>
+    public IReadOnlyList<Device> MembersOf(Device group) =>
+        group.Members.Select(id => _data?.Devices.FirstOrDefault(d => d.Id == id)).OfType<Device>().ToList();
+
+    public async Task SetMemberOnOffAsync(Device member, bool on)
+    {
+        await RunAsync(() => _api.SetOnOffAsync(member, on), $"{member.Name}: не удалось {(on ? "включить" : "выключить")}");
+        await RefreshSoonAsync();
+    }
+
+    /// <summary>Устройства для выбора в своей группе: всё, что включается, кроме групп.</summary>
+    public IReadOnlyList<(Device Device, string Room)> GroupCandidates()
+    {
+        if (_data is null) return [];
+        string? household = SelectedHousehold?.Id;
+        return _data.Devices
+            .Where(d => !d.IsGroup && d.OnOff is not null && (household is null || d.HouseholdId is null || d.HouseholdId == household))
+            .Select(d => (d, NameOf(d.RoomId ?? NoRoomKey)))
+            .OrderBy(p => p.Item2).ThenBy(p => p.d.Name)
+            .ToList();
+    }
+
+    /// <summary>Группы из Яндекса (только посмотреть — менять их можно в приложении Яндекса).</summary>
+    public IReadOnlyList<Device> YandexGroups() => _data?.Devices.Where(d => d.IsGroup && !d.IsLocal).ToList() ?? [];
+
+    /// <summary>Свои группы поменялись в настройках — пересобрать без запроса к Яндексу.</summary>
+    public void RebuildGroups()
+    {
+        if (_raw is null) return;
+        _data = WithGroups(_raw);
+        BuildRooms(force: true);
     }
 
     /// <summary>Комнаты в пользовательском порядке: сначала по RoomOrder, потом остальные по алфавиту.</summary>

@@ -35,6 +35,14 @@ public sealed class VoiceShortcut
     public string ReplySound { get; set; } = "";
 }
 
+/// <summary>Своя группа Homie: несколько устройств под одним названием («Люстра» = левый + правый канал).</summary>
+public sealed class LocalGroup
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "";
+    public List<string> MemberIds { get; set; } = [];
+}
+
 /// <summary>Когда Homie отвечает голосом (заранее записанные файлы).</summary>
 public enum ReplyEvent { Wake, On, Off, Done, Scenario, App, NotUnderstood, NotHeard, Failed, Countdown, Cancelled }
 
@@ -51,6 +59,9 @@ public sealed class AppSettings
     /// <summary>Порядок комнат сверху вниз (ID комнат; «группы» и «без комнаты» — служебные ключи).</summary>
     public List<string> RoomOrder { get; set; } = [];
     public List<string> HiddenRooms { get; set; } = [];
+
+    /// <summary>Свои группы устройств (Яндекс не даёт создавать группы через API — храним у себя).</summary>
+    public List<LocalGroup> LocalGroups { get; set; } = [];
 
     // ---------- голос ----------
 

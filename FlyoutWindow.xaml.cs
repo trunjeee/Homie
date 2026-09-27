@@ -224,6 +224,39 @@ public sealed partial class FlyoutWindow : Window
             panel.Children.Add(table);
         }
 
+        // Группа: её устройства с отдельными переключателями («Люстра» → левый и правый канал).
+        if (item.Device.Members.Count > 0)
+        {
+            var members = Home.MembersOf(item.Device);
+            panel.Children.Add(new TextBlock { Text = item.Device.IsLocal ? "Устройства группы Homie" : "Устройства группы", FontSize = 12, Foreground = dim });
+            var list = new StackPanel { Spacing = 2, MinWidth = 260 };
+            foreach (var member in members)
+            {
+                var row = new Grid { ColumnSpacing = 12 };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.Children.Add(new TextBlock
+                {
+                    Text = member.Name, FontSize = 13, VerticalAlignment = VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                });
+                if (member.OnOff is not null)
+                {
+                    var toggle = new ToggleSwitch
+                    {
+                        IsOn = member.OnOff.OnValue == true, OnContent = "", OffContent = "", MinWidth = 0,
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    var m = member;
+                    toggle.Toggled += (_, _) => _ = Home.SetMemberOnOffAsync(m, toggle.IsOn);
+                    Grid.SetColumn(toggle, 1);
+                    row.Children.Add(toggle);
+                }
+                list.Children.Add(row);
+            }
+            panel.Children.Add(list);
+        }
+
         if (withBrightness && item.HasBrightness)
         {
             panel.Children.Add(new TextBlock { Text = "Яркость", FontSize = 12, Foreground = dim });

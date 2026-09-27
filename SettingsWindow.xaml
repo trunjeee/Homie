@@ -122,6 +122,39 @@
                     <StackPanel x:Name="RoomOrderList" Spacing="6" />
                 </StackPanel>
 
+                <!-- ===== Группы ===== -->
+                <StackPanel Style="{StaticResource Card}">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Группы" />
+                    <TextBlock Style="{StaticResource Hint}" Text="Несколько устройств под одним названием — одна плитка и одна команда: «Хоуми, выключи люстру». Группа встаёт в комнату своих устройств, сами устройства прячутся внутрь неё." />
+                    <StackPanel x:Name="GroupList" Spacing="6" />
+
+                    <TextBox
+                        x:Name="GroupNameBox"
+                        Header="Новая группа"
+                        PlaceholderText="название, например: Люстра" />
+                    <ListView
+                        x:Name="GroupMembersList"
+                        MaxHeight="260"
+                        Padding="0"
+                        Background="#0DFFFFFF"
+                        CornerRadius="10"
+                        SelectionMode="Multiple" />
+                    <Button
+                        HorizontalAlignment="Left"
+                        Click="CreateGroup_Click"
+                        CornerRadius="10">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon FontSize="12" Glyph="&#xE710;" />
+                            <TextBlock Text="Создать группу" />
+                        </StackPanel>
+                    </Button>
+                    <TextBlock
+                        x:Name="GroupError"
+                        FontSize="12"
+                        Foreground="#EF4444"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
                 <!-- ===== Голос ===== -->
                 <StackPanel Style="{StaticResource Card}">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Голосовое управление" />

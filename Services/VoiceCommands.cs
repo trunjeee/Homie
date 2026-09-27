@@ -181,9 +181,14 @@ public static class VoiceCommands
         var typeWords = words.Select((w, i) => (w, i)).Where(p => !used[p.i] && IsTypeWord(p.w)).Select(p => p.i).ToHashSet();
         bool allWord = words.Where((w, i) => !used[i]).Any(w => w is "все" or "всю" or "всего" or "всем");
         // «выключи все лампы» — это все лампы, а не устройство с именем «Лампа».
-        var byName = allWord ? [] : BestDevices(devices.Where(d => !d.IsGroup), words, used, typeWords);
+        // Группы тоже ищутся по названию: «выключи люстру» — вся группа «Люстра» разом.
+        var byName = allWord ? [] : BestDevices(devices, words, used, typeWords);
         var type = Types.FirstOrDefault(t => Has(t.Stems)) ?? (words.Any(IsLightWord) ? Light : null);
         bool all = type is null && allWord;
+
+        // Каналы выключателя в группе-светильнике («Люстра» = левый + правый) — тоже свет.
+        var lightGroupMembers = devices.Where(d => d.IsGroup && d.Type.StartsWith(Light.TypePrefix)).SelectMany(d => d.Members).ToHashSet();
+        bool IsOfType(Device d, DeviceType t) => d.Type.StartsWith(t.TypePrefix) || (t == Light && lightGroupMembers.Contains(d.Id));
 
         List<Device> targets;
         if (byName.Count > 0 && byName.Any(InScope))
@@ -205,7 +210,7 @@ public static class VoiceCommands
         {
             // Тип не назван («выключи» в зале) — как колонки, считаем, что про свет.
             var t = all ? null : type ?? Light;
-            targets = devices.Where(d => !d.IsGroup && InScope(d) && (t is null || d.Type.StartsWith(t.TypePrefix))).ToList();
+            targets = devices.Where(d => !d.IsGroup && InScope(d) && (t is null || IsOfType(d, t))).ToList();
             what = t?.What ?? "всё";
             if (targets.Count == 0 && scenario is not null)
                 return new VoiceIntent(VoiceAction.Scenario, [], scenario.Name, "") { Scenario = scenario };
@@ -214,7 +219,7 @@ public static class VoiceCommands
                 // Нет такого в комнате ПК — может, это одно устройство где-то ещё («включи телевизор»).
                 if (namedRooms.Count == 0 && !everywhere && t is not null)
                 {
-                    targets = devices.Where(d => !d.IsGroup && d.Type.StartsWith(t.TypePrefix)).ToList();
+                    targets = devices.Where(d => !d.IsGroup && IsOfType(d, t)).ToList();
                     if (targets.Count is > 0 and <= 1) where = RoomName(targets[0], rooms);
                     else targets = [];
                 }

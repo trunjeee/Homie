@@ -104,6 +104,85 @@ public sealed partial class SettingsWindow : Window
 
     // ---------- комнаты: порядок и видимость ----------
 
+    // ---------- группы ----------
+
+    /// <summary>Устройство в списке выбора для новой группы: «Левая клавиша · Балкон».</summary>
+    private sealed record GroupCandidate(string Id, string Title)
+    {
+        public override string ToString() => Title;
+    }
+
+    private void BuildGroups()
+    {
+        GroupList.Children.Clear();
+
+        // Группы Яндекса — только показываем (создаются и меняются в приложении Яндекса).
+        foreach (var g in _home.YandexGroups())
+            GroupList.Children.Add(GroupRow(g.Name, string.Join(", ", _home.MembersOf(g).Select(m => m.Name)), "из Яндекса", null));
+
+        foreach (var local in _settings.LocalGroups.ToList())
+        {
+            var names = local.MemberIds.Select(id => _home.Data?.Devices.FirstOrDefault(d => d.Id == id)?.Name ?? "устройство удалено");
+            GroupList.Children.Add(GroupRow(local.Name, string.Join(", ", names), "группа Homie", () =>
+            {
+                _settings.LocalGroups.Remove(local);
+                SettingsStore.Save(_settings);
+                _home.RebuildGroups();
+                BuildGroups();
+            }));
+        }
+
+        if (GroupList.Children.Count == 0)
+            GroupList.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = "Групп пока нет", FontSize = 12, Opacity = 0.6 });
+
+        GroupMembersList.ItemsSource = _home.GroupCandidates().Select(c => new GroupCandidate(c.Device.Id, $"{c.Device.Name}  ·  {c.Room}")).ToList();
+    }
+
+    private Microsoft.UI.Xaml.Controls.Grid GroupRow(string name, string members, string source, Action? remove)
+    {
+        var row = new Microsoft.UI.Xaml.Controls.Grid
+        {
+            Padding = new Thickness(12, 8, 6, 8),
+            ColumnSpacing = 8,
+            CornerRadius = new CornerRadius(10),
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF)),
+        };
+        row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        var text = new Microsoft.UI.Xaml.Controls.StackPanel { Spacing = 1 };
+        text.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = $"{name}  ·  {source}", FontSize = 13 });
+        text.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = members, FontSize = 11, Opacity = 0.55, TextWrapping = TextWrapping.Wrap });
+        row.Children.Add(text);
+        if (remove is not null)
+        {
+            var delete = SmallButton("", "Удалить группу");
+            delete.Click += (_, _) => remove();
+            Microsoft.UI.Xaml.Controls.Grid.SetColumn(delete, 1);
+            row.Children.Add(delete);
+        }
+        return row;
+    }
+
+    private void CreateGroup_Click(object sender, RoutedEventArgs e)
+    {
+        string name = GroupNameBox.Text.Trim();
+        var members = GroupMembersList.SelectedItems.OfType<GroupCandidate>().Select(c => c.Id).ToList();
+        if (name.Length == 0) { GroupError.Text = "Назови группу — по этому названию её будет понимать Хоуми"; return; }
+        if (members.Count < 2) { GroupError.Text = "Отметь хотя бы два устройства"; return; }
+        if (_settings.LocalGroups.Any(g => g.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            GroupError.Text = "Группа с таким названием уже есть";
+            return;
+        }
+
+        _settings.LocalGroups.Add(new LocalGroup { Name = name, MemberIds = members });
+        SettingsStore.Save(_settings);
+        _home.RebuildGroups();
+        GroupError.Text = "";
+        GroupNameBox.Text = "";
+        BuildGroups();
+    }
+
     private void BuildRoomOrder()
     {
         RoomOrderList.Children.Clear();
@@ -707,6 +786,7 @@ public sealed partial class SettingsWindow : Window
     {
         if (_home.Data is null && _home.IsSignedIn) await _home.RefreshAsync();
         BuildRoomOrder();
+        BuildGroups();
         LoadPcRooms();
         var options = new List<TargetOption>();
         if (_home.Data is { } data)
