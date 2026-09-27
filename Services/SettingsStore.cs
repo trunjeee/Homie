@@ -73,6 +73,17 @@ public sealed class AppSettings
     /// <summary>Файлы ответов по событиям; из нескольких выбирается случайный.</summary>
     public Dictionary<ReplyEvent, List<string>> ReplySounds { get; set; } = [];
 
+    // ---------- нейросеть (OpenRouter) ----------
+
+    /// <summary>Непонятые команды отправлять нейросети и отвечать.</summary>
+    public bool AiEnabled { get; set; }
+    public string AiModel { get; set; } = "google/gemma-4-26b-a4b-it:free";
+    /// <summary>Если основная занята или не ответила.</summary>
+    public string AiFallbackModel { get; set; } = "qwen/qwen3.8-27b:free";
+    /// <summary>Озвучивать ответ (голос Microsoft Natural, нужен интернет).</summary>
+    public bool AiSpeak { get; set; } = true;
+    public string AiVoice { get; set; } = EdgeVoice.Svetlana;
+
     /// <summary>Стандартные ответы — записи, которые идут вместе с Homie (Assets\Sounds).</summary>
     public static Dictionary<ReplyEvent, List<string>> DefaultReplySounds()
     {
@@ -150,12 +161,22 @@ public static class SettingsStore
 
     // ---------- токен: шифруется DPAPI, расшифровать может только этот пользователь на этом ПК ----------
 
-    public static string? LoadToken()
+    public static string? LoadToken() => LoadSecret(TokenFile);
+    public static void SaveToken(string token) => SaveSecret(TokenFile, token);
+    public static void DeleteToken() => DeleteSecret(TokenFile);
+
+    // Ключ OpenRouter — свой у каждого пользователя, только на этом ПК (в код и на GitHub не попадает).
+    private static readonly string AiKeyFile = Path.Combine(Dir, "openrouter.bin");
+    public static string? LoadAiKey() => LoadSecret(AiKeyFile);
+    public static void SaveAiKey(string key) => SaveSecret(AiKeyFile, key);
+    public static void DeleteAiKey() => DeleteSecret(AiKeyFile);
+
+    private static string? LoadSecret(string file)
     {
         try
         {
-            if (!File.Exists(TokenFile)) return null;
-            var bytes = ProtectedData.Unprotect(File.ReadAllBytes(TokenFile), Entropy, DataProtectionScope.CurrentUser);
+            if (!File.Exists(file)) return null;
+            var bytes = ProtectedData.Unprotect(File.ReadAllBytes(file), Entropy, DataProtectionScope.CurrentUser);
             return Encoding.UTF8.GetString(bytes);
         }
         catch (Exception ex) when (ex is IOException or CryptographicException or UnauthorizedAccessException)
@@ -164,16 +185,16 @@ public static class SettingsStore
         }
     }
 
-    public static void SaveToken(string token)
+    private static void SaveSecret(string file, string value)
     {
         Directory.CreateDirectory(Dir);
-        var bytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(token.Trim()), Entropy, DataProtectionScope.CurrentUser);
-        File.WriteAllBytes(TokenFile, bytes);
+        var bytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(value.Trim()), Entropy, DataProtectionScope.CurrentUser);
+        File.WriteAllBytes(file, bytes);
     }
 
-    public static void DeleteToken()
+    private static void DeleteSecret(string file)
     {
-        try { File.Delete(TokenFile); }
+        try { File.Delete(file); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 

@@ -178,6 +178,7 @@ public sealed partial class SettingsWindow : Window
         UpdateModelStatus();
         BuildShortcuts();
         BuildReplies();
+        LoadAi();
 
         // Что слышит микрофон в режиме ожидания — чтобы подобрать варианты «Хоуми».
         Action<string> heard = text => HeardText.Text = $"Услышал: «{text}»";
@@ -519,6 +520,110 @@ public sealed partial class SettingsWindow : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, label);
         Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(b, label);
         return b;
+    }
+
+    // ---------- нейросеть ----------
+
+    private readonly AiService _ai = new();
+
+    private void LoadAi()
+    {
+        _loadingVoice = true;
+        AiToggle.IsOn = _settings.AiEnabled;
+        AiModelBox.Text = _settings.AiModel;
+        AiFallbackBox.Text = _settings.AiFallbackModel;
+        AiSpeakToggle.IsOn = _settings.AiSpeak;
+        AiVoiceBox.SelectedIndex = _settings.AiVoice == EdgeVoice.Dmitry ? 1 : 0;
+        _loadingVoice = false;
+        UpdateAiKeyStatus();
+        Closed += (_, _) => _ai.Dispose();
+    }
+
+    private void UpdateAiKeyStatus()
+    {
+        bool has = AiService.HasKey;
+        AiKeyStatus.Text = has ? "✓ Ключ сохранён" : "Ключа нет — вставь его и нажми «Сохранить»";
+        DeleteAiKeyButton.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SaveAiKey_Click(object sender, RoutedEventArgs e)
+    {
+        var key = AiKeyBox.Password.Trim();
+        if (key.Length == 0) return;
+        SettingsStore.SaveAiKey(key);
+        AiKeyBox.Password = "";
+        if (!_settings.AiEnabled)
+        {
+            _settings.AiEnabled = AiToggle.IsOn = true;
+            SettingsStore.Save(_settings);
+        }
+        UpdateAiKeyStatus();
+    }
+
+    private void DeleteAiKey_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsStore.DeleteAiKey();
+        UpdateAiKeyStatus();
+    }
+
+    private void AiToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loadingVoice) return;
+        _settings.AiEnabled = AiToggle.IsOn;
+        SettingsStore.Save(_settings);
+    }
+
+    private void AiModel_LostFocus(object sender, RoutedEventArgs e)
+    {
+        _settings.AiModel = AiModelBox.Text.Trim();
+        _settings.AiFallbackModel = AiFallbackBox.Text.Trim();
+        SettingsStore.Save(_settings);
+    }
+
+    private void AiSpeak_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loadingVoice) return;
+        _settings.AiSpeak = AiSpeakToggle.IsOn;
+        SettingsStore.Save(_settings);
+    }
+
+    private void AiVoice_SelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
+    {
+        if (_loadingVoice) return;
+        _settings.AiVoice = AiVoiceBox.SelectedIndex == 1 ? EdgeVoice.Dmitry : EdgeVoice.Svetlana;
+        SettingsStore.Save(_settings);
+    }
+
+    /// <summary>Проверка ключа и модели прямо из настроек (с озвучкой, если включена).</summary>
+    private async void AiTest_Click(object sender, RoutedEventArgs e)
+    {
+        AiModel_LostFocus(sender, e);
+        string question = AiTestBox.Text.Trim();
+        if (question.Length == 0) question = "Привет! Представься одним предложением.";
+        AiTestButton.IsEnabled = false;
+        AiTestResult.Text = "Думаю…";
+        try
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string answer = await _ai.AskAsync(question, _settings);
+            AiTestResult.Text = $"{answer}  ({sw.Elapsed.TotalSeconds:0.0} с)";
+            if (_settings.AiSpeak)
+            {
+                try { await _replies.PlayMp3Async(await EdgeVoice.SynthesizeAsync(answer, _settings.AiVoice)); }
+                catch (Exception ex) when (ex is IOException or System.Net.WebSockets.WebSocketException or OperationCanceledException or HttpRequestException)
+                {
+                    AiTestResult.Text += "\nГолос сейчас недоступен — ответ будет только текстом.";
+                }
+            }
+        }
+        catch (AiException ex)
+        {
+            AiTestResult.Text = "✗ " + ex.Message;
+        }
+        finally
+        {
+            AiTestButton.IsEnabled = true;
+        }
     }
 
     private void ResetReplies_Click(object sender, RoutedEventArgs e)

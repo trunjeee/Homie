@@ -480,7 +480,7 @@ public sealed partial class HomeViewModel : ObservableObject, IDisposable
         if (_data is null) return (false, ErrorText ?? "Нет связи с умным домом", ReplyEvent.Failed);
 
         var intent = VoiceCommands.Parse(text, _data, SelectedHousehold?.Id, pcRoomId, out var error);
-        if (intent is null) return (false, error, ReplyEvent.NotUnderstood);
+        if (intent is null) return (false, error, error == VoiceCommands.NotUnderstood ? ReplyEvent.NotUnderstood : ReplyEvent.Failed);
 
         if (intent.Action == VoiceAction.Scenario)
         {

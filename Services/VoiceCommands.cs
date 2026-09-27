@@ -23,6 +23,9 @@ public sealed record VoiceIntent(VoiceAction Action, IReadOnlyList<Device> Devic
 /// </summary>
 public static class VoiceCommands
 {
+    /// <summary>Фраза не похожа ни на одну команду — такую можно отдать нейросети.</summary>
+    public const string NotUnderstood = "Не понял команду";
+
     private static readonly string[] OffVerbs = ["выключ", "выруб", "погас", "отключ", "потуш", "туши", "выкл"];
     private static readonly string[] OnVerbs = ["включ", "вруб", "зажг", "зажеч", "вкл"];
     private static readonly string[] ScenarioWords = ["сценари", "запуст", "активир", "режим"];
@@ -230,7 +233,7 @@ public static class VoiceCommands
         }
         else
         {
-            error = "Не понял команду";
+            error = NotUnderstood;
             return null;
         }
 

@@ -198,6 +198,7 @@ public sealed partial class HostWindow : Window
             _voiceWindow.Dismissed += () =>
             {
                 _voice.CancelListening(silent: true);
+                _replies.Stop();
                 CancelCountdown();
             };
         }
@@ -276,9 +277,50 @@ public sealed partial class HostWindow : Window
         }
 
         window.ShowProcessing(text);
+        bool aiReady = _settings.AiEnabled && AiService.HasKey;
+        if (!_home.IsSignedIn && aiReady)
+        {
+            await AskAiAsync(text); // умный дом не подключён — всё, что не команда ПК, это вопрос
+            return;
+        }
+
         var (ok, answer, reply) = await _home.ExecuteVoiceAsync(text, _settings.PcRoomId);
+        if (reply == ReplyEvent.NotUnderstood && aiReady)
+        {
+            await AskAiAsync(text); // не команда — спрашиваем нейросеть
+            return;
+        }
         if (reply is { } r) _replies.Play(r);
         window.ShowResult(ok, answer);
+    }
+
+    private readonly AiService _ai = new();
+
+    private async Task AskAiAsync(string question)
+    {
+        var window = VoiceUi();
+        window.ShowThinking(question);
+        string answer;
+        try
+        {
+            answer = await _ai.AskAsync(question, _settings);
+        }
+        catch (AiException ex)
+        {
+            _replies.Play(ReplyEvent.Failed);
+            window.ShowResult(false, ex.Message);
+            return;
+        }
+
+        // Голос — только если успели синтезировать; иначе ответ просто текстом.
+        byte[]? speech = null;
+        if (_settings.AiSpeak && _settings.VoiceReplies)
+        {
+            try { speech = await EdgeVoice.SynthesizeAsync(answer, _settings.AiVoice); }
+            catch (Exception ex) when (ex is IOException or System.Net.WebSockets.WebSocketException or OperationCanceledException or HttpRequestException) { }
+        }
+        window.ShowAnswer(question, answer);
+        if (speech is not null) await _replies.PlayMp3Async(speech);
     }
 
     /// <summary>Выключение и перезагрузка — через 5 секунд, чтобы случайно услышанная фраза не выключила ПК.</summary>
@@ -317,7 +359,6 @@ public sealed partial class HostWindow : Window
     {
         _pending = null;
         _countdown?.Stop();
-        _voiceWindow?.EndCountdown();
     }
 
     // ---------- окно ----------
@@ -339,6 +380,7 @@ public sealed partial class HostWindow : Window
         if (_voiceKeyRegistered) Win32.UnregisterHotKey(_hwnd, VoiceHotkeyId);
         _voice.Dispose();
         _replies.Dispose();
+        _ai.Dispose();
         _voiceWindow?.Close();
         _tray.Dispose();
         _home.Dispose();

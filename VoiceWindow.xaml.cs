@@ -24,7 +24,7 @@ public sealed partial class VoiceWindow : Window
     private readonly Win32.SUBCLASSPROC _wndProc;
     private readonly DispatcherQueueTimer _pulse;
     private readonly DispatcherQueueTimer _hide;
-    private bool _listening, _shown, _counting;
+    private bool _listening, _shown, _tall;
     private float _level;
     private double _phase;
 
@@ -87,6 +87,7 @@ public sealed partial class VoiceWindow : Window
     public void ShowListening()
     {
         _hide.Stop();
+        ResetSize();
         _listening = true;
         SetLook(Colors.White, "", Colors.Black);
         RecDot.Visibility = Visibility.Visible;
@@ -131,12 +132,42 @@ public sealed partial class VoiceWindow : Window
         HideAfter(ok ? 3 : 5);
     }
 
+    /// <summary>Нейросеть думает над вопросом.</summary>
+    public void ShowThinking(string question)
+    {
+        _listening = false;
+        RecDot.Visibility = Visibility.Collapsed;
+        StatusText.Text = "Думаю…";
+        SpeechText.Text = Capitalize(question);
+        SpeechText.Opacity = 0.6;
+        ResultText.Visibility = Visibility.Collapsed;
+        SetLook(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF), "", Colors.White);
+        ShowWindow();
+    }
+
+    /// <summary>Ответ нейросети: окошко выше, текст крупнее, висит столько, сколько нужно прочитать.</summary>
+    public void ShowAnswer(string question, string answer)
+    {
+        _listening = false;
+        RecDot.Visibility = Visibility.Collapsed;
+        StatusText.Text = Capitalize(question);
+        SpeechText.Text = answer;
+        SpeechText.Opacity = 1;
+        SpeechText.MaxLines = 6;
+        SpeechText.FontSize = 15;
+        ResultText.Visibility = Visibility.Collapsed;
+        SetLook(Colors.White, "", Colors.Black);
+        _tall = true;
+        _shown = false; // пересчитать размер
+        ShowWindow();
+        HideAfter(Math.Clamp(answer.Length * 0.07, 6, 25));
+    }
+
     /// <summary>Выключение/перезагрузка: отсчёт, клик по окошку отменяет.</summary>
     public void ShowCountdown(string doing, int secondsLeft)
     {
         _hide.Stop();
         _listening = false;
-        _counting = true;
         RecDot.Visibility = Visibility.Collapsed;
         StatusText.Text = "Клик по окошку или «Хоуми, отмена» — отменить";
         SpeechText.Text = $"{doing} через {secondsLeft}…";
@@ -146,7 +177,6 @@ public sealed partial class VoiceWindow : Window
         ShowWindow();
     }
 
-    public void EndCountdown() => _counting = false;
 
     public void ShowCancelled(string reason)
     {
@@ -158,6 +188,16 @@ public sealed partial class VoiceWindow : Window
         HideAfter(1.8);
     }
 
+    /// <summary>После ответа нейросети — обратно в обычный размер.</summary>
+    private void ResetSize()
+    {
+        if (!_tall) return;
+        _tall = false;
+        _shown = false;
+        SpeechText.MaxLines = 2;
+        SpeechText.FontSize = 17;
+    }
+
     public void HideNow()
     {
         _hide.Stop();
@@ -165,6 +205,7 @@ public sealed partial class VoiceWindow : Window
         _listening = false;
         _shown = false;
         AppWindow.Hide();
+        ResetSize();
     }
 
     // ---------- оформление ----------
@@ -208,7 +249,7 @@ public sealed partial class VoiceWindow : Window
         var area = DisplayArea.Primary.WorkArea;
         AppWindow.Move(new PointInt32(area.X, area.Y)); // сначала на монитор, чтобы масштаб был его
         double scale = Win32.GetDpiForWindow(_hwnd) / 96d;
-        int gap = (int)(12 * scale), w = (int)(WidthDip * scale), h = (int)(HeightDip * scale);
+        int gap = (int)(12 * scale), w = (int)(WidthDip * scale), h = (int)((_tall ? 190 : HeightDip) * scale);
         AppWindow.MoveAndResize(new RectInt32(area.X + area.Width - w - gap, area.Y + area.Height - h - gap, w, h));
     }
 
@@ -221,10 +262,8 @@ public sealed partial class VoiceWindow : Window
 
     private void Root_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        bool wasActive = _listening || _counting;
-        _counting = false;
         HideNow();
-        if (wasActive) Dismissed?.Invoke();
+        Dismissed?.Invoke(); // отменить запись/отсчёт и остановить речь
     }
 
     private static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpper(s[0]) + s[1..];

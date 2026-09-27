@@ -248,6 +248,108 @@
                         Content="Вернуть стандартные ответы" />
                 </StackPanel>
 
+                <!-- ===== Нейросеть ===== -->
+                <StackPanel Style="{StaticResource Card}">
+                    <Grid>
+                        <TextBlock Style="{StaticResource SectionTitle}" Text="Нейросеть — ответы на вопросы" />
+                        <ToggleSwitch
+                            x:Name="AiToggle"
+                            MinWidth="0"
+                            HorizontalAlignment="Right"
+                            OffContent=""
+                            OnContent=""
+                            Toggled="AiToggle_Toggled" />
+                    </Grid>
+                    <TextBlock Style="{StaticResource Hint}">
+                        <Run Text="Если фраза — не команда («Хоуми, сколько до Луны?»), Homie спросит нейросеть через OpenRouter и ответит голосом. Бесплатные модели (с «:free») — до 50 вопросов в день. Ключ создаётся на" />
+                        <Hyperlink NavigateUri="https://openrouter.ai/settings/keys">openrouter.ai/settings/keys</Hyperlink>
+                        <Run Text="— он хранится только на этом ПК, зашифрованным." />
+                    </TextBlock>
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <PasswordBox
+                            x:Name="AiKeyBox"
+                            Header="Ключ OpenRouter"
+                            PlaceholderText="sk-or-v1-…" />
+                        <Button
+                            Grid.Column="1"
+                            Height="32"
+                            VerticalAlignment="Bottom"
+                            Click="SaveAiKey_Click"
+                            CornerRadius="10"
+                            Content="Сохранить" />
+                        <Button
+                            x:Name="DeleteAiKeyButton"
+                            Grid.Column="2"
+                            Height="32"
+                            VerticalAlignment="Bottom"
+                            Click="DeleteAiKey_Click"
+                            CornerRadius="10"
+                            Content="Удалить" />
+                    </Grid>
+                    <TextBlock x:Name="AiKeyStatus" FontSize="13" />
+
+                    <TextBox
+                        x:Name="AiModelBox"
+                        Header="Модель"
+                        LostFocus="AiModel_LostFocus" />
+                    <TextBox
+                        x:Name="AiFallbackBox"
+                        Header="Запасная модель (если основная занята)"
+                        LostFocus="AiModel_LostFocus" />
+                    <TextBlock Style="{StaticResource Hint}">
+                        <Run Text="Список бесплатных моделей:" />
+                        <Hyperlink NavigateUri="https://openrouter.ai/models?max_price=0">openrouter.ai/models?max_price=0</Hyperlink>
+                        <Run Text="— копируй название вместе с «:free»." />
+                    </TextBlock>
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ToggleSwitch
+                            x:Name="AiSpeakToggle"
+                            Header="Озвучивать ответ (нужен интернет)"
+                            OffContent="Только текст"
+                            OnContent="Голосом"
+                            Toggled="AiSpeak_Toggled" />
+                        <ComboBox
+                            x:Name="AiVoiceBox"
+                            Grid.Column="1"
+                            MinWidth="160"
+                            VerticalAlignment="Bottom"
+                            Header="Голос"
+                            SelectionChanged="AiVoice_SelectionChanged">
+                            <x:String>Светлана</x:String>
+                            <x:String>Дмитрий</x:String>
+                        </ComboBox>
+                    </Grid>
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="AiTestBox" PlaceholderText="вопрос для проверки, например: привет, как дела?" />
+                        <Button
+                            x:Name="AiTestButton"
+                            Grid.Column="1"
+                            Click="AiTest_Click"
+                            CornerRadius="10"
+                            Content="Спросить" />
+                    </Grid>
+                    <TextBlock
+                        x:Name="AiTestResult"
+                        FontSize="13"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
                 <!-- ===== Горячие клавиши ===== -->
                 <StackPanel Style="{StaticResource Card}">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Горячие клавиши" />

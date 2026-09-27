@@ -106,6 +106,35 @@ public sealed class ReplyPlayer : IDisposable
         }
     }
 
+    /// <summary>Замолчать (клик по окошку).</summary>
+    public void Stop()
+    {
+        _player.Pause();
+        _player.Source = null;
+        PlayingChanged?.Invoke(false);
+    }
+
+    /// <summary>Озвучить готовый mp3 (ответ нейросети голосом «Светланы»).</summary>
+    public async Task<bool> PlayMp3Async(byte[] mp3)
+    {
+        try
+        {
+            var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+            await stream.WriteAsync(System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(mp3));
+            stream.Seek(0);
+            _player.Volume = Math.Clamp(_settings.ReplyVolume, 0, 1);
+            _player.Source = MediaSource.CreateFromStream(stream, "audio/mpeg");
+            PlayingChanged?.Invoke(true);
+            _player.Play();
+            return true;
+        }
+        catch (Exception)
+        {
+            PlayingChanged?.Invoke(false);
+            return false;
+        }
+    }
+
     /// <summary>Скопировать выбранный файл к себе и вернуть новый путь.</summary>
     public static string Import(string source)
     {
