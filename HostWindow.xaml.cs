@@ -30,6 +30,7 @@ public sealed partial class HostWindow : Window
     private DateTime _pttPressedAt;
     private bool _voiceKeyRegistered;
     private bool _pttStarting;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _wakeReplyTimer;
     private readonly ReplyPlayer _replies;
     private string? _voiceError;
 
@@ -61,16 +62,32 @@ public sealed partial class HostWindow : Window
         _voice.ListeningStarted += () =>
         {
             VoiceUi().ShowListening();
-            if (!_pttStarting) _replies.Play(ReplyEvent.Wake); // на клавишу не отвечаем — чтобы не заглушать начало фразы
+            // «Слушаю» — только если после «Хоуми» пауза: сразу продолжил фразу — не перебиваем.
+            if (!_pttStarting) _wakeReplyTimer.Start();
         };
-        _voice.PartialText += text => _voiceWindow?.SetText(text);
+        _voice.PartialText += text =>
+        {
+            if (text.Length > 0) _wakeReplyTimer.Stop();
+            _voiceWindow?.SetText(text);
+        };
         _voice.Level += level => _voiceWindow?.SetLevel(level);
         _voice.Cancelled += reason =>
         {
+            _wakeReplyTimer.Stop();
             _voiceWindow?.ShowCancelled(reason);
             if (reason.Length > 0) _replies.Play(ReplyEvent.NotHeard);
         };
-        _voice.CommandRecognized += OnVoiceCommand;
+        _voice.CommandRecognized += text => { _wakeReplyTimer.Stop(); OnVoiceCommand(text); };
+
+        // Сказал «Хоуми» и молчишь 3 секунды — тогда отвечаем «Слушаю», иначе не перебиваем.
+        _wakeReplyTimer = DispatcherQueue.CreateTimer();
+        _wakeReplyTimer.Interval = TimeSpan.FromSeconds(3);
+        _wakeReplyTimer.IsRepeating = false;
+        _wakeReplyTimer.Tick += (_, _) =>
+        {
+            if (_voice.IsListening) _replies.Play(ReplyEvent.Wake);
+        };
+
         _pttWatch = DispatcherQueue.CreateTimer();
         _pttWatch.Interval = TimeSpan.FromMilliseconds(30);
         _pttWatch.Tick += (_, _) => WatchVoiceKey();
