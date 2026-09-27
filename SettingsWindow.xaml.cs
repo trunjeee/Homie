@@ -332,7 +332,7 @@ public sealed partial class SettingsWindow : Window
             void UpdateReply()
             {
                 bool has = s.ReplySound.Length > 0;
-                replyName.Text = has ? "Ответ: " + ReplyPlayer.DisplayName(s.ReplySound) : "Ответ: общий";
+                replyName.Text = has ? "Ответ: " + string.Join(", ", ReplyPlayer.Split(s.ReplySound).Select(ReplyPlayer.DisplayName)) : "Ответ: общий";
                 playReply.Visibility = clearReply.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
             }
             UpdateReply();
@@ -340,11 +340,11 @@ public sealed partial class SettingsWindow : Window
             {
                 var picked = await PickSoundsAsync();
                 if (picked.Count == 0) return;
-                try { s.ReplySound = ReplyPlayer.Import(picked[0]); } catch (IOException) { return; }
+                try { s.ReplySound = string.Join(ReplyPlayer.Separator, picked.Select(ReplyPlayer.Import)); } catch (IOException) { return; } // можно выбрать несколько — прозвучит случайный
                 SaveShortcuts();
                 UpdateReply();
             };
-            playReply.Click += (_, _) => _replies.PlayFile(s.ReplySound, force: true);
+            playReply.Click += (_, _) => { if (ReplyPlayer.Split(s.ReplySound).FirstOrDefault() is { } first) _replies.PlayFile(first, force: true); };
             clearReply.Click += (_, _) => { s.ReplySound = ""; SaveShortcuts(); UpdateReply(); };
             replyRow.Children.Add(replyName);
             replyRow.Children.Add(pickReply);

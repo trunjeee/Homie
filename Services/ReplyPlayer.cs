@@ -20,6 +20,12 @@ public sealed class ReplyPlayer : IDisposable
 
     public static bool Exists(string path) => File.Exists(Resolve(path));
 
+    /// <summary>Разделитель нескольких своих ответов у одной команды.</summary>
+    public const string Separator = "|";
+
+    public static IEnumerable<string> Split(string? paths) =>
+        (paths ?? "").Split(Separator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
     /// <summary>Имя для списка в настройках: «Готово» (стандартные помечены).</summary>
     public static string DisplayName(string path) =>
         Path.GetFileNameWithoutExtension(Resolve(path)) + (path.StartsWith(BuiltIn) ? " · стандартный" : "");
@@ -73,7 +79,9 @@ public sealed class ReplyPlayer : IDisposable
     /// <summary>Сыграть случайный файл события. Вернёт true, если что-то играет.</summary>
     public bool Play(ReplyEvent e, string? own = null)
     {
-        if (!string.IsNullOrWhiteSpace(own) && Exists(own)) return PlayFile(own);
+        // У команды может быть несколько своих ответов («Запускаю, удачной игры» | «Погнали!») — случайный.
+        var ownFiles = Split(own).Where(Exists).ToList();
+        if (ownFiles.Count > 0) return PlayFile(ownFiles[_random.Next(ownFiles.Count)]);
         if (!_settings.ReplySounds.TryGetValue(e, out var files)) return false;
         var existing = files.Where(Exists).ToList();
         return existing.Count > 0 && PlayFile(existing[_random.Next(existing.Count)]);

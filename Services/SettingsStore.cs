@@ -84,7 +84,7 @@ public sealed class AppSettings
             [ReplyEvent.Off] = B("Выключаю", "Выключила", "Готово, темно"),
             [ReplyEvent.Done] = B("Готово", "Сделано", "Есть", "Конечно"),
             [ReplyEvent.Scenario] = B("Запускаю сценарий"),
-            [ReplyEvent.App] = B("Запускаю, удачной игры", "Погнали! Удачи в катке"),
+            [ReplyEvent.App] = B("Конечно", "Готово"),
             [ReplyEvent.NotUnderstood] = B("Не поняла, повтори", "Прости, не поняла"),
             [ReplyEvent.NotHeard] = B("Не поняла, повтори"),
             [ReplyEvent.Failed] = B("Не получилось", "Ой, что-то пошло не так", "Не получилось, устройство не отвечает"),
@@ -110,7 +110,7 @@ public sealed class AppSettings
         };
         const string faceit = @"C:\Program Files\FACEIT AC\faceitclient.exe";
         if (File.Exists(faceit))
-            list.Insert(0, new() { Action = PcAction.OpenApp, Path = faceit, Phrases = "давай поиграем, включи античит, запусти античит, фейсит античит, включи фейсит, запусти фейсит" });
+            list.Insert(0, new() { Action = PcAction.OpenApp, Path = faceit, ReplySound = ReplyPlayer.BuiltIn + "Запускаю, удачной игры.mp3" + ReplyPlayer.Separator + ReplyPlayer.BuiltIn + "Погнали! Удачи в катке.mp3", Phrases = "давай поиграем, включи античит, запусти античит, фейсит античит, включи фейсит, запусти фейсит" });
         return list;
     }
 }
