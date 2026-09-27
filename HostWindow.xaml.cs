@@ -59,6 +59,16 @@ public sealed partial class HostWindow : Window
         }
         _replies = new ReplyPlayer(_settings);
         _replies.PlayingChanged += playing => _voice.Suppress(playing);
+
+        // Сказал «Хоуми» и молчишь 3 секунды — тогда отвечаем «Слушаю», иначе не перебиваем.
+        _wakeReplyTimer = DispatcherQueue.CreateTimer();
+        _wakeReplyTimer.Interval = TimeSpan.FromSeconds(3);
+        _wakeReplyTimer.IsRepeating = false;
+        _wakeReplyTimer.Tick += (_, _) =>
+        {
+            if (_voice.IsListening) _replies.Play(ReplyEvent.Wake);
+        };
+
         _voice.ListeningStarted += () =>
         {
             VoiceUi().ShowListening();
@@ -78,15 +88,6 @@ public sealed partial class HostWindow : Window
             if (reason.Length > 0) _replies.Play(ReplyEvent.NotHeard);
         };
         _voice.CommandRecognized += text => { _wakeReplyTimer.Stop(); OnVoiceCommand(text); };
-
-        // Сказал «Хоуми» и молчишь 3 секунды — тогда отвечаем «Слушаю», иначе не перебиваем.
-        _wakeReplyTimer = DispatcherQueue.CreateTimer();
-        _wakeReplyTimer.Interval = TimeSpan.FromSeconds(3);
-        _wakeReplyTimer.IsRepeating = false;
-        _wakeReplyTimer.Tick += (_, _) =>
-        {
-            if (_voice.IsListening) _replies.Play(ReplyEvent.Wake);
-        };
 
         _pttWatch = DispatcherQueue.CreateTimer();
         _pttWatch.Interval = TimeSpan.FromMilliseconds(30);
