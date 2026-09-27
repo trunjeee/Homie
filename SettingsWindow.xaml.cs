@@ -332,7 +332,7 @@ public sealed partial class SettingsWindow : Window
             void UpdateReply()
             {
                 bool has = s.ReplySound.Length > 0;
-                replyName.Text = has ? "Ответ: " + Path.GetFileNameWithoutExtension(s.ReplySound) : "Ответ: общий";
+                replyName.Text = has ? "Ответ: " + ReplyPlayer.DisplayName(s.ReplySound) : "Ответ: общий";
                 playReply.Visibility = clearReply.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
             }
             UpdateReply();
@@ -481,9 +481,9 @@ public sealed partial class SettingsWindow : Window
                     };
                     chip.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock
                     {
-                        Text = Path.GetFileNameWithoutExtension(file), FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+                        Text = ReplyPlayer.DisplayName(file), FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
                         MaxWidth = 300, TextTrimming = TextTrimming.CharacterEllipsis,
-                        Opacity = File.Exists(file) ? 1 : 0.4,
+                        Opacity = ReplyPlayer.Exists(file) ? 1 : 0.4,
                     });
                     var play = SmallButton("", "Прослушать");
                     play.Click += (_, _) => _replies.PlayFile(file, force: true);
@@ -519,6 +519,13 @@ public sealed partial class SettingsWindow : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, label);
         Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(b, label);
         return b;
+    }
+
+    private void ResetReplies_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.ReplySounds = AppSettings.DefaultReplySounds();
+        SettingsStore.Save(_settings);
+        BuildReplies();
     }
 
     private void RepliesToggle_Toggled(object sender, RoutedEventArgs e)

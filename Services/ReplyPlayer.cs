@@ -11,6 +11,19 @@ public sealed class ReplyPlayer : IDisposable
 {
     public static readonly string SoundsDir = Path.Combine(SettingsStore.Dir, "sounds");
 
+    /// <summary>Приставка для записей из комплекта Homie: путь не ломается, если папку с программой перенести.</summary>
+    public const string BuiltIn = "builtin:";
+
+    public static string Resolve(string path) => path.StartsWith(BuiltIn)
+        ? Path.Combine(AppContext.BaseDirectory, "Assets", "Sounds", path[BuiltIn.Length..])
+        : path;
+
+    public static bool Exists(string path) => File.Exists(Resolve(path));
+
+    /// <summary>Имя для списка в настройках: «Готово» (стандартные помечены).</summary>
+    public static string DisplayName(string path) =>
+        Path.GetFileNameWithoutExtension(Resolve(path)) + (path.StartsWith(BuiltIn) ? " · стандартный" : "");
+
     private readonly AppSettings _settings;
     private readonly MediaPlayer _player = new() { AudioCategory = MediaPlayerAudioCategory.Speech };
     private readonly Random _random = new();
@@ -60,9 +73,9 @@ public sealed class ReplyPlayer : IDisposable
     /// <summary>Сыграть случайный файл события. Вернёт true, если что-то играет.</summary>
     public bool Play(ReplyEvent e, string? own = null)
     {
-        if (!string.IsNullOrWhiteSpace(own) && File.Exists(own)) return PlayFile(own);
+        if (!string.IsNullOrWhiteSpace(own) && Exists(own)) return PlayFile(own);
         if (!_settings.ReplySounds.TryGetValue(e, out var files)) return false;
-        var existing = files.Where(File.Exists).ToList();
+        var existing = files.Where(Exists).ToList();
         return existing.Count > 0 && PlayFile(existing[_random.Next(existing.Count)]);
     }
 
@@ -73,7 +86,7 @@ public sealed class ReplyPlayer : IDisposable
         try
         {
             _player.Volume = Math.Clamp(_settings.ReplyVolume, 0, 1);
-            _player.Source = MediaSource.CreateFromUri(new Uri(path));
+            _player.Source = MediaSource.CreateFromUri(new Uri(Resolve(path)));
             PlayingChanged?.Invoke(true);
             _player.Play();
             return true;

@@ -50,6 +50,12 @@ public sealed partial class HostWindow : Window
         _ = _home.RefreshAsync(); // чтобы меню со сценариями было готово сразу
 
         _voice = new VoiceService(DispatcherQueue);
+        // Первый запуск: стандартные записанные ответы из комплекта Homie.
+        if (_settings.ReplySounds.Count == 0)
+        {
+            _settings.ReplySounds = AppSettings.DefaultReplySounds();
+            SettingsStore.Save(_settings);
+        }
         _replies = new ReplyPlayer(_settings);
         _replies.PlayingChanged += playing => _voice.Suppress(playing);
         _voice.ListeningStarted += () =>

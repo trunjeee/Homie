@@ -239,6 +239,13 @@
                         Minimum="0"
                         ValueChanged="ReplyVolume_ValueChanged" />
                     <StackPanel x:Name="ReplyList" Spacing="6" />
+                    <Button
+                        HorizontalAlignment="Left"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="ResetReplies_Click"
+                        CornerRadius="10"
+                        Content="Вернуть стандартные ответы" />
                 </StackPanel>
 
                 <!-- ===== Горячие клавиши ===== -->

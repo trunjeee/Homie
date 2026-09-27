@@ -73,6 +73,26 @@ public sealed class AppSettings
     /// <summary>Файлы ответов по событиям; из нескольких выбирается случайный.</summary>
     public Dictionary<ReplyEvent, List<string>> ReplySounds { get; set; } = [];
 
+    /// <summary>Стандартные ответы — записи, которые идут вместе с Homie (Assets\Sounds).</summary>
+    public static Dictionary<ReplyEvent, List<string>> DefaultReplySounds()
+    {
+        static List<string> B(params string[] names) => [.. names.Select(n => ReplyPlayer.BuiltIn + n + ".mp3")];
+        return new()
+        {
+            [ReplyEvent.Wake] = B("Пиип"),
+            [ReplyEvent.On] = B("Включаю"),
+            [ReplyEvent.Off] = B("Выключаю"),
+            [ReplyEvent.Done] = B("Готово", "Сделано", "Есть", "Конечно"),
+            [ReplyEvent.Scenario] = B("Конечно", "Готово"),
+            [ReplyEvent.App] = B("Запускаю, удачной игры"),
+            [ReplyEvent.NotUnderstood] = B("Не поняла, повтори"),
+            [ReplyEvent.NotHeard] = B("Не поняла, повтори"),
+            [ReplyEvent.Failed] = B("Не получилось"),
+            [ReplyEvent.Countdown] = B("Выключаю компьютер через пять секунд"),
+            [ReplyEvent.Cancelled] = B("Отменено"),
+        };
+    }
+
     public static List<VoiceShortcut> DefaultShortcuts()
     {
         var list = new List<VoiceShortcut>
