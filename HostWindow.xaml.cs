@@ -312,15 +312,15 @@ public sealed partial class HostWindow : Window
             return;
         }
 
-        // Голос — только если успели синтезировать; иначе ответ просто текстом.
-        byte[]? speech = null;
-        if (_settings.AiSpeak && _settings.VoiceReplies)
-        {
-            try { speech = await EdgeVoice.SynthesizeAsync(answer, _settings.AiVoice); }
-            catch (Exception ex) when (ex is IOException or System.Net.WebSockets.WebSocketException or OperationCanceledException or HttpRequestException) { }
-        }
+        // Текст — сразу, голос — как только синтезируется (не получилось — остаётся текст).
         window.ShowAnswer(question, answer);
-        if (speech is not null) await _replies.PlayMp3Async(speech);
+        if (!_settings.AiSpeak || !_settings.VoiceReplies) return;
+        try
+        {
+            var speech = await EdgeVoice.SynthesizeAsync(answer, _settings.AiVoice);
+            if (window.IsShowingAnswer(answer)) await _replies.PlayMp3Async(speech); // окошко не закрыли кликом
+        }
+        catch (Exception ex) when (ex is IOException or System.Net.WebSockets.WebSocketException or OperationCanceledException or HttpRequestException) { }
     }
 
     /// <summary>Выключение и перезагрузка — через 5 секунд, чтобы случайно услышанная фраза не выключила ПК.</summary>

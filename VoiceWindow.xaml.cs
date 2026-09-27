@@ -160,8 +160,11 @@ public sealed partial class VoiceWindow : Window
         _tall = true;
         _shown = false; // пересчитать размер
         ShowWindow();
-        HideAfter(Math.Clamp(answer.Length * 0.07, 6, 25));
+        HideAfter(Math.Clamp(2 + answer.Length * 0.09, 7, 30)); // голос начинается чуть позже текста
     }
+
+    /// <summary>Этот ответ всё ещё на экране (не закрыли и не начали новую команду).</summary>
+    public bool IsShowingAnswer(string answer) => _shown && _tall && SpeechText.Text == answer;
 
     /// <summary>Выключение/перезагрузка: отсчёт, клик по окошку отменяет.</summary>
     public void ShowCountdown(string doing, int secondsLeft)
