@@ -300,7 +300,7 @@
                         LostFocus="AiModel_LostFocus" />
                     <TextBox
                         x:Name="AiFallbackBox"
-                        Header="Запасная модель (если основная занята)"
+                        Header="Запасные модели через запятую (если основная занята)"
                         LostFocus="AiModel_LostFocus" />
                     <TextBlock Style="{StaticResource Hint}">
                         <Run Text="Список бесплатных моделей:" />

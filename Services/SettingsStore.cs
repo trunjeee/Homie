@@ -77,9 +77,9 @@ public sealed class AppSettings
 
     /// <summary>Непонятые команды отправлять нейросети и отвечать.</summary>
     public bool AiEnabled { get; set; }
-    public string AiModel { get; set; } = "google/gemma-4-26b-a4b-it:free";
-    /// <summary>Если основная занята или не ответила.</summary>
-    public string AiFallbackModel { get; set; } = "qwen/qwen3.8-27b:free";
+    public string AiModel { get; set; } = "qwen/qwen3.8-27b:free";
+    /// <summary>Если основная занята или не ответила; можно несколько через запятую.</summary>
+    public string AiFallbackModel { get; set; } = "nvidia/nemotron-3-super-120b-a12b:free, google/gemma-4-26b-a4b-it:free";
     /// <summary>Озвучивать ответ (голос Microsoft Natural, нужен интернет).</summary>
     public bool AiSpeak { get; set; } = true;
     public string AiVoice { get; set; } = EdgeVoice.Svetlana;

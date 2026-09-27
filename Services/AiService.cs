@@ -22,8 +22,9 @@ public sealed partial class AiService : IDisposable
     public async Task<string> AskAsync(string question, AppSettings settings, CancellationToken ct = default)
     {
         var key = SettingsStore.LoadAiKey() ?? throw new AiException("Добавь ключ OpenRouter в настройках");
-        var models = new[] { settings.AiModel, settings.AiFallbackModel }
-            .Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim()).Distinct().ToList();
+        // Запасных можно несколько через запятую — пробуем по очереди.
+        var models = new[] { settings.AiModel }.Concat(settings.AiFallbackModel.Split(',', ';'))
+            .Select(m => m.Trim()).Where(m => m.Length > 0).Distinct().ToList();
         if (models.Count == 0) throw new AiException("Не выбрана модель");
 
         AiException? last = null;
@@ -78,18 +79,26 @@ public sealed partial class AiService : IDisposable
             using (response)
             {
                 string json = await response.Content.ReadAsStringAsync(ct);
+                string server = ErrorText(json);
                 switch (response.StatusCode)
                 {
                     case HttpStatusCode.Unauthorized:
                         throw new AiException("Ключ OpenRouter не подошёл — проверь его в настройках", fatal: true);
                     case HttpStatusCode.PaymentRequired:
-                        throw new AiException("OpenRouter просит пополнить баланс — выбери модель с «:free»");
+                        throw new AiException($"{model}: OpenRouter просит пополнить баланс — выбери модель с «:free»");
+                    // Настоящий дневной лимит аккаунта — другие модели тоже не помогут.
+                    case HttpStatusCode.TooManyRequests when server.Contains("per-day", StringComparison.OrdinalIgnoreCase):
+                        throw new AiException("Лимит бесплатных вопросов на сегодня закончился", fatal: true);
+                    // Иначе 429 — это перегрузка у поставщика бесплатной модели: пробуем следующую.
                     case HttpStatusCode.TooManyRequests:
-                        throw new AiException("Лимит бесплатных вопросов закончился — попробуй позже");
+                        throw new AiException($"{ShortName(model)} сейчас перегружена, попробуй чуть позже");
+                    case HttpStatusCode.NotFound when server.Contains("data policy", StringComparison.OrdinalIgnoreCase):
+                        throw new AiException("Разреши бесплатные модели в настройках приватности OpenRouter (openrouter.ai/settings/privacy)", fatal: true);
                     case HttpStatusCode.BadRequest when disableReasoning:
                         continue;
                 }
-                if (!response.IsSuccessStatusCode) throw new AiException($"Нейросеть не ответила ({(int)response.StatusCode})");
+                if (!response.IsSuccessStatusCode)
+                    throw new AiException($"{ShortName(model)}: ошибка {(int)response.StatusCode}{(server.Length > 0 ? " — " + server : "")}");
 
                 try
                 {
@@ -105,6 +114,25 @@ public sealed partial class AiService : IDisposable
         }
         throw new AiException("Модель не приняла запрос");
     }
+
+    /// <summary>Текст ошибки от OpenRouter/поставщика (коротко).</summary>
+    private static string ErrorText(string json)
+    {
+        try
+        {
+            var error = JsonNode.Parse(json)?["error"];
+            string message = error?["message"]?.GetValue<string>() ?? "";
+            string raw = error?["metadata"]?["raw"]?.ToString() ?? "";
+            string text = raw.Length > 0 && !message.Contains(raw) ? $"{message} ({raw})" : message;
+            return text.Length > 200 ? text[..200] + "…" : text;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            return "";
+        }
+    }
+
+    private static string ShortName(string model) => model.Split('/').Last().Replace(":free", "");
 
     private static string SystemPrompt() =>
         "Ты — Хоуми, голосовой помощник на компьютере пользователя (умный дом, игры, повседневные вопросы). " +
