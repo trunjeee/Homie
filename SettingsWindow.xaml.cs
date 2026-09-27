@@ -17,6 +17,9 @@ namespace Homie;
 /// <summary>Вариант для списка «Что делать» у горячей клавиши.</summary>
 public sealed record TargetOption(string Title, HotkeyTarget Target, string Id, string Name);
 
+/// <summary>Вариант для списка действий своей голосовой команды.</summary>
+public sealed record ActionOption(PcAction Action, string Title);
+
 /// <summary>Подключение к умному дому (Client ID и токен) и свои горячие клавиши.</summary>
 public sealed partial class SettingsWindow : Window
 {
@@ -171,6 +174,7 @@ public sealed partial class SettingsWindow : Window
         _loadingVoice = false;
         UpdateVoicePanels();
         UpdateModelStatus();
+        BuildShortcuts();
 
         // Что слышит микрофон в режиме ожидания — чтобы подобрать варианты «Хоуми».
         Action<string> heard = text => HeardText.Text = $"Услышал: «{text}»";
@@ -264,6 +268,131 @@ public sealed partial class SettingsWindow : Window
         _settings.WakeWords = WakeWordsBox.Text;
         SettingsStore.Save(_settings);
         await ApplyVoiceAsync();
+    }
+
+    // ---------- свои команды для компьютера ----------
+
+    private void BuildShortcuts()
+    {
+        _settings.VoiceShortcuts ??= AppSettings.DefaultShortcuts();
+        ShortcutList.Children.Clear();
+        var actions = Enum.GetValues<PcAction>().Select(a => new ActionOption(a, PcActions.Title(a))).ToList();
+
+        foreach (var shortcut in _settings.VoiceShortcuts)
+        {
+            var s = shortcut;
+            var card = new Microsoft.UI.Xaml.Controls.Grid
+            {
+                Padding = new Thickness(12, 10, 6, 10),
+                RowSpacing = 8,
+                ColumnSpacing = 8,
+                CornerRadius = new CornerRadius(10),
+                Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF)),
+            };
+            card.RowDefinitions.Add(new() { Height = GridLength.Auto });
+            card.RowDefinitions.Add(new() { Height = GridLength.Auto });
+            card.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+            card.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+
+            var actionBox = new Microsoft.UI.Xaml.Controls.ComboBox
+            {
+                ItemsSource = actions, DisplayMemberPath = nameof(ActionOption.Title),
+                SelectedItem = actions.First(a => a.Action == s.Action), MinWidth = 240,
+            };
+            var pathBox = new Microsoft.UI.Xaml.Controls.TextBox
+            {
+                Text = s.Path, PlaceholderText = "программа, файл или ссылка (steam://, https://…)",
+                MinWidth = 180, HorizontalAlignment = HorizontalAlignment.Stretch,
+            };
+            var browse = new Microsoft.UI.Xaml.Controls.Button { Content = "Обзор…", CornerRadius = new CornerRadius(8) };
+            var pathRow = new Microsoft.UI.Xaml.Controls.Grid { ColumnSpacing = 6 };
+            pathRow.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+            pathRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+            pathRow.Children.Add(pathBox);
+            Microsoft.UI.Xaml.Controls.Grid.SetColumn(browse, 1);
+            pathRow.Children.Add(browse);
+
+            var top = new Microsoft.UI.Xaml.Controls.StackPanel { Spacing = 6 };
+            top.Children.Add(actionBox);
+            top.Children.Add(pathRow);
+            void UpdatePath() => pathRow.Visibility = s.Action == PcAction.OpenApp ? Visibility.Visible : Visibility.Collapsed;
+            UpdatePath();
+
+            var phrases = new Microsoft.UI.Xaml.Controls.TextBox
+            {
+                Text = s.Phrases, PlaceholderText = "фразы через запятую: давай поиграем, включи античит",
+                TextWrapping = TextWrapping.Wrap, AcceptsReturn = false,
+            };
+            Microsoft.UI.Xaml.Controls.Grid.SetRow(phrases, 1);
+            Microsoft.UI.Xaml.Controls.Grid.SetColumnSpan(phrases, 2);
+
+            var remove = new Microsoft.UI.Xaml.Controls.Button
+            {
+                Width = 32, Height = 32, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Top,
+                Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
+                BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(8),
+                Content = new Microsoft.UI.Xaml.Controls.FontIcon { Glyph = "", FontSize = 12 },
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(remove, "Удалить команду");
+            Microsoft.UI.Xaml.Controls.Grid.SetColumn(remove, 1);
+
+            actionBox.SelectionChanged += (_, _) =>
+            {
+                if (actionBox.SelectedItem is ActionOption o) s.Action = o.Action;
+                UpdatePath();
+                SaveShortcuts();
+            };
+            pathBox.LostFocus += (_, _) => { s.Path = pathBox.Text.Trim(); SaveShortcuts(); };
+            phrases.LostFocus += (_, _) => { s.Phrases = phrases.Text.Trim(); SaveShortcuts(); };
+            browse.Click += async (_, _) =>
+            {
+                if (await PickFileAsync() is { } file)
+                {
+                    pathBox.Text = s.Path = file;
+                    SaveShortcuts();
+                }
+            };
+            remove.Click += (_, _) =>
+            {
+                _settings.VoiceShortcuts!.Remove(s);
+                SaveShortcuts();
+                BuildShortcuts();
+            };
+
+            card.Children.Add(top);
+            card.Children.Add(remove);
+            card.Children.Add(phrases);
+            ShortcutList.Children.Add(card);
+        }
+    }
+
+    private void AddShortcut_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.VoiceShortcuts ??= AppSettings.DefaultShortcuts();
+        _settings.VoiceShortcuts.Add(new VoiceShortcut { Action = PcAction.OpenApp });
+        SaveShortcuts();
+        BuildShortcuts();
+    }
+
+    private void ResetShortcuts_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.VoiceShortcuts = AppSettings.DefaultShortcuts();
+        SaveShortcuts();
+        BuildShortcuts();
+    }
+
+    private void SaveShortcuts() => SettingsStore.Save(_settings);
+
+    private async Task<string?> PickFileAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+        picker.FileTypeFilter.Add(".exe");
+        picker.FileTypeFilter.Add(".lnk");
+        picker.FileTypeFilter.Add(".url");
+        picker.FileTypeFilter.Add("*");
+        var file = await picker.PickSingleFileAsync();
+        return file?.Path;
     }
 
     private void LoadPcRooms()

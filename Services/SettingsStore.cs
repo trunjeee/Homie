@@ -17,6 +17,22 @@ public sealed class HotkeyBinding
     public string TargetName { get; set; } = "";
 }
 
+/// <summary>Что делает своя голосовая команда.</summary>
+public enum PcAction
+{
+    OpenApp, Shutdown, Restart, Sleep, Hibernate, Lock, SignOut, MonitorOff,
+    Mute, VolumeUp, VolumeDown, PlayPause, NextTrack, PreviousTrack,
+}
+
+/// <summary>Своя голосовая команда: фразы через запятую → действие с компьютером.</summary>
+public sealed class VoiceShortcut
+{
+    public string Phrases { get; set; } = "";
+    public PcAction Action { get; set; }
+    /// <summary>Для «Открыть»: программа, файл или ссылка.</summary>
+    public string Path { get; set; } = "";
+}
+
 public sealed class AppSettings
 {
     /// <summary>ClientID своего приложения на oauth.yandex.ru — у каждого пользователя свой, в код не зашивается.</summary>
@@ -42,9 +58,34 @@ public sealed class AppSettings
     public string? PcRoomId { get; set; }
     /// <summary>Как распознаётся слово вызова — модель может слышать «хоуми» по-разному.</summary>
     public string WakeWords { get; set; } = "хоуми, хоми, хауми, хоуме, хоу ми, хоум ми, хаоми";
+
+    /// <summary>Свои команды для компьютера. null — ещё не создавались (тогда кладём стандартные).</summary>
+    public List<VoiceShortcut>? VoiceShortcuts { get; set; }
+
+    public static List<VoiceShortcut> DefaultShortcuts()
+    {
+        var list = new List<VoiceShortcut>
+        {
+            new() { Action = PcAction.Shutdown, Phrases = "выключи компьютер, выключи комп, выключи пк, выключи пека, выключи писи, выруби комп, выруби компьютер, выключи компик" },
+            new() { Action = PcAction.Restart, Phrases = "перезагрузи компьютер, перезагрузи комп, перезагрузи пк, перезагрузка, перезагрузи" },
+            new() { Action = PcAction.Sleep, Phrases = "спящий режим, усыпи компьютер, режим сна" },
+            new() { Action = PcAction.Lock, Phrases = "заблокируй компьютер, блокировка, заблокируй" },
+            new() { Action = PcAction.MonitorOff, Phrases = "выключи экран, выключи монитор, погаси экран" },
+            new() { Action = PcAction.Mute, Phrases = "выключи звук, включи звук, без звука" },
+            new() { Action = PcAction.VolumeUp, Phrases = "громче, сделай громче" },
+            new() { Action = PcAction.VolumeDown, Phrases = "тише, сделай тише" },
+            new() { Action = PcAction.PlayPause, Phrases = "пауза, продолжи, поставь на паузу" },
+            new() { Action = PcAction.NextTrack, Phrases = "следующий трек, следующая песня, дальше" },
+        };
+        const string faceit = @"C:\Program Files\FACEIT AC\faceitclient.exe";
+        if (File.Exists(faceit))
+            list.Insert(0, new() { Action = PcAction.OpenApp, Path = faceit, Phrases = "давай поиграем, включи античит, запусти античит, фейсит античит, включи фейсит, запусти фейсит" });
+        return list;
+    }
 }
 
 [JsonSerializable(typeof(AppSettings))]
+[JsonSerializable(typeof(VoiceShortcut))]
 [JsonSourceGenerationOptions(WriteIndented = true, UseStringEnumConverter = true)]
 internal partial class SettingsJsonContext : JsonSerializerContext;
 

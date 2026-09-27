@@ -159,7 +159,11 @@ public sealed partial class HostWindow : Window
         if (_voiceWindow is null)
         {
             _voiceWindow = new VoiceWindow();
-            _voiceWindow.Dismissed += () => _voice.CancelListening(silent: true);
+            _voiceWindow.Dismissed += () =>
+            {
+                _voice.CancelListening(silent: true);
+                CancelCountdown();
+            };
         }
         return _voiceWindow;
     }
@@ -200,12 +204,77 @@ public sealed partial class HostWindow : Window
         _voice.PushToTalkUp(shortTap: DateTime.Now - _pttPressedAt < TimeSpan.FromMilliseconds(350));
     }
 
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _countdown;
+    private VoiceShortcut? _pending;
+    private int _secondsLeft;
+
     private async void OnVoiceCommand(string text)
     {
         var window = VoiceUi();
+
+        // «Хоуми, отмена» во время отсчёта выключения.
+        if (_pending is not null && VoiceCommands.Normalize(text).Split(' ').Any(w => w.StartsWith("отмен") || w is "стоп" or "нет" or "стой"))
+        {
+            CancelCountdown();
+            window.ShowResult(true, "Отменено");
+            return;
+        }
+
+        // Свои команды для компьютера — раньше умного дома («выключи компьютер» ≠ «выключи свет»).
+        _settings.VoiceShortcuts ??= AppSettings.DefaultShortcuts();
+        if (PcActions.Find(text, _settings.VoiceShortcuts) is { } shortcut)
+        {
+            window.ShowProcessing(text);
+            if (PcActions.NeedsCountdown(shortcut.Action)) StartCountdown(shortcut);
+            else
+            {
+                string? error = PcActions.Run(shortcut);
+                window.ShowResult(error is null, error ?? PcActions.Doing(shortcut));
+            }
+            return;
+        }
+
         window.ShowProcessing(text);
         var (ok, answer) = await _home.ExecuteVoiceAsync(text, _settings.PcRoomId);
         window.ShowResult(ok, answer);
+    }
+
+    /// <summary>Выключение и перезагрузка — через 5 секунд, чтобы случайно услышанная фраза не выключила ПК.</summary>
+    private void StartCountdown(VoiceShortcut shortcut)
+    {
+        _pending = shortcut;
+        _secondsLeft = 5;
+        if (_countdown is null)
+        {
+            _countdown = DispatcherQueue.CreateTimer();
+            _countdown.Interval = TimeSpan.FromSeconds(1);
+            _countdown.Tick += (_, _) => CountdownTick();
+        }
+        VoiceUi().ShowCountdown(PcActions.Doing(shortcut), _secondsLeft);
+        _countdown.Start();
+    }
+
+    private void CountdownTick()
+    {
+        if (_pending is null) { _countdown?.Stop(); return; }
+        _secondsLeft--;
+        if (_secondsLeft > 0)
+        {
+            // Пока идёт запись «Хоуми, отмена» — окошко показывает её, отсчёт идёт дальше.
+            if (!_voice.IsListening) VoiceUi().ShowCountdown(PcActions.Doing(_pending), _secondsLeft);
+            return;
+        }
+        var shortcut = _pending;
+        CancelCountdown();
+        string? error = PcActions.Run(shortcut);
+        VoiceUi().ShowResult(error is null, error ?? PcActions.Doing(shortcut));
+    }
+
+    private void CancelCountdown()
+    {
+        _pending = null;
+        _countdown?.Stop();
+        _voiceWindow?.EndCountdown();
     }
 
     // ---------- окно ----------

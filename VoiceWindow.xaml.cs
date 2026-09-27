@@ -24,7 +24,7 @@ public sealed partial class VoiceWindow : Window
     private readonly Win32.SUBCLASSPROC _wndProc;
     private readonly DispatcherQueueTimer _pulse;
     private readonly DispatcherQueueTimer _hide;
-    private bool _listening, _shown;
+    private bool _listening, _shown, _counting;
     private float _level;
     private double _phase;
 
@@ -131,6 +131,23 @@ public sealed partial class VoiceWindow : Window
         HideAfter(ok ? 3 : 5);
     }
 
+    /// <summary>Выключение/перезагрузка: отсчёт, клик по окошку отменяет.</summary>
+    public void ShowCountdown(string doing, int secondsLeft)
+    {
+        _hide.Stop();
+        _listening = false;
+        _counting = true;
+        RecDot.Visibility = Visibility.Collapsed;
+        StatusText.Text = "Клик по окошку или «Хоуми, отмена» — отменить";
+        SpeechText.Text = $"{doing} через {secondsLeft}…";
+        SpeechText.Opacity = 1;
+        ResultText.Visibility = Visibility.Collapsed;
+        SetLook(Color.FromArgb(255, 0xFF, 0x45, 0x3A), "", Colors.White);
+        ShowWindow();
+    }
+
+    public void EndCountdown() => _counting = false;
+
     public void ShowCancelled(string reason)
     {
         _listening = false;
@@ -204,9 +221,10 @@ public sealed partial class VoiceWindow : Window
 
     private void Root_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        bool wasListening = _listening;
+        bool wasActive = _listening || _counting;
+        _counting = false;
         HideNow();
-        if (wasListening) Dismissed?.Invoke();
+        if (wasActive) Dismissed?.Invoke();
     }
 
     private static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpper(s[0]) + s[1..];

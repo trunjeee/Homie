@@ -52,6 +52,8 @@ public sealed class VoiceService : IDisposable
     public VoiceService(DispatcherQueue ui) => _ui = ui;
 
     private bool WakeEnabled => _mode is VoiceMode.WakeWord or VoiceMode.Both && !_paused;
+    /// <summary>Сейчас записывается команда.</summary>
+    public bool IsListening => _state != State.Idle;
     public bool PushToTalkEnabled => _mode is VoiceMode.PushToTalk or VoiceMode.Both;
     public bool HasWakeWord => _mode is VoiceMode.WakeWord or VoiceMode.Both;
 

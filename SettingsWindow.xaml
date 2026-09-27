@@ -198,6 +198,27 @@
                         TextWrapping="Wrap" />
                 </StackPanel>
 
+                <!-- ===== Свои голосовые команды ===== -->
+                <StackPanel Style="{StaticResource Card}">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Голосовые команды для компьютера" />
+                    <TextBlock Style="{StaticResource Hint}" Text="Одно действие — сколько угодно фраз через запятую. Слова можно говорить в любом падеже и порядке. Выключение и перезагрузка срабатывают через 5 секунд — можно отменить кликом по окошку или «Хоуми, отмена»." />
+                    <StackPanel x:Name="ShortcutList" Spacing="8" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Click="AddShortcut_Click" CornerRadius="10">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon FontSize="12" Glyph="&#xE710;" />
+                                <TextBlock Text="Добавить команду" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="ResetShortcuts_Click"
+                            CornerRadius="10"
+                            Content="Вернуть стандартные" />
+                    </StackPanel>
+                </StackPanel>
+
                 <!-- ===== Горячие клавиши ===== -->
                 <StackPanel Style="{StaticResource Card}">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Горячие клавиши" />
