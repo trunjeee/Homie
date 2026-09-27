@@ -29,18 +29,20 @@ public sealed partial class SettingsWindow : Window
     private readonly ObservableCollection<HotkeyBinding> _hotkeys;
     private readonly VoiceService _voice;
     private readonly Func<Task<string?>> _applyVoice;
+    private readonly ReplyPlayer _replies;
     private uint _capturedModifiers, _capturedKey;
     private bool _loadingVoice;
     private CancellationTokenSource? _download;
 
     public SettingsWindow(AppSettings settings, HomeViewModel home, Func<IReadOnlyList<HotkeyBinding>> applyHotkeys,
-        VoiceService voice, Func<Task<string?>> applyVoice)
+        VoiceService voice, Func<Task<string?>> applyVoice, ReplyPlayer replies)
     {
         _settings = settings;
         _home = home;
         _applyHotkeys = applyHotkeys;
         _voice = voice;
         _applyVoice = applyVoice;
+        _replies = replies;
         InitializeComponent();
 
         ExtendsContentIntoTitleBar = true;
@@ -175,6 +177,7 @@ public sealed partial class SettingsWindow : Window
         UpdateVoicePanels();
         UpdateModelStatus();
         BuildShortcuts();
+        BuildReplies();
 
         // Что слышит микрофон в режиме ожидания — чтобы подобрать варианты «Хоуми».
         Action<string> heard = text => HeardText.Text = $"Услышал: «{text}»";
@@ -315,6 +318,39 @@ public sealed partial class SettingsWindow : Window
             var top = new Microsoft.UI.Xaml.Controls.StackPanel { Spacing = 6 };
             top.Children.Add(actionBox);
             top.Children.Add(pathRow);
+
+            // Свой голосовой ответ на эту команду («Запускаю, удачной игры»).
+            var replyRow = new Microsoft.UI.Xaml.Controls.StackPanel { Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal, Spacing = 2 };
+            var replyName = new Microsoft.UI.Xaml.Controls.TextBlock
+            {
+                FontSize = 12, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0),
+                MaxWidth = 260, TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            var pickReply = SmallButton("", "Выбрать свой звук ответа");
+            var playReply = SmallButton("", "Прослушать");
+            var clearReply = SmallButton("", "Убрать свой ответ");
+            void UpdateReply()
+            {
+                bool has = s.ReplySound.Length > 0;
+                replyName.Text = has ? "Ответ: " + Path.GetFileNameWithoutExtension(s.ReplySound) : "Ответ: общий";
+                playReply.Visibility = clearReply.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+            }
+            UpdateReply();
+            pickReply.Click += async (_, _) =>
+            {
+                var picked = await PickSoundsAsync();
+                if (picked.Count == 0) return;
+                try { s.ReplySound = ReplyPlayer.Import(picked[0]); } catch (IOException) { return; }
+                SaveShortcuts();
+                UpdateReply();
+            };
+            playReply.Click += (_, _) => _replies.PlayFile(s.ReplySound, force: true);
+            clearReply.Click += (_, _) => { s.ReplySound = ""; SaveShortcuts(); UpdateReply(); };
+            replyRow.Children.Add(replyName);
+            replyRow.Children.Add(pickReply);
+            replyRow.Children.Add(playReply);
+            replyRow.Children.Add(clearReply);
+            top.Children.Add(replyRow);
             void UpdatePath() => pathRow.Visibility = s.Action == PcAction.OpenApp ? Visibility.Visible : Visibility.Collapsed;
             UpdatePath();
 
@@ -382,6 +418,131 @@ public sealed partial class SettingsWindow : Window
     }
 
     private void SaveShortcuts() => SettingsStore.Save(_settings);
+
+    // ---------- ответы голосом ----------
+
+    private void BuildReplies()
+    {
+        _loadingVoice = true;
+        RepliesToggle.IsOn = _settings.VoiceReplies;
+        ReplyVolume.Value = Math.Round(_settings.ReplyVolume * 100);
+        _loadingVoice = false;
+
+        ReplyList.Children.Clear();
+        foreach (var ev in Enum.GetValues<ReplyEvent>())
+        {
+            var files = _settings.ReplySounds.TryGetValue(ev, out var list) ? list : [];
+            var row = new Microsoft.UI.Xaml.Controls.Grid
+            {
+                Padding = new Thickness(12, 8, 6, 8),
+                ColumnSpacing = 8,
+                RowSpacing = 6,
+                CornerRadius = new CornerRadius(10),
+                Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x0D, 0xFF, 0xFF, 0xFF)),
+            };
+            row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+            row.RowDefinitions.Add(new() { Height = GridLength.Auto });
+            row.RowDefinitions.Add(new() { Height = GridLength.Auto });
+
+            var title = new Microsoft.UI.Xaml.Controls.StackPanel { Spacing = 1 };
+            title.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = ReplyPlayer.Title(ev), FontSize = 13 });
+            title.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = ReplyPlayer.Example(ev), FontSize = 11, Opacity = 0.55 });
+            row.Children.Add(title);
+
+            var add = SmallButton("", "Добавить файлы");
+            add.VerticalAlignment = VerticalAlignment.Top;
+            add.Click += async (_, _) =>
+            {
+                var picked = await PickSoundsAsync();
+                if (picked.Count == 0) return;
+                if (!_settings.ReplySounds.TryGetValue(ev, out var l)) _settings.ReplySounds[ev] = l = [];
+                foreach (var p in picked)
+                {
+                    try { l.Add(ReplyPlayer.Import(p)); }
+                    catch (IOException) { }
+                }
+                SettingsStore.Save(_settings);
+                BuildReplies();
+            };
+            Microsoft.UI.Xaml.Controls.Grid.SetColumn(add, 1);
+            row.Children.Add(add);
+
+            if (files.Count > 0)
+            {
+                var wrap = new Microsoft.UI.Xaml.Controls.StackPanel { Spacing = 4 };
+                foreach (var file in files.ToList())
+                {
+                    var chip = new Microsoft.UI.Xaml.Controls.StackPanel
+                    {
+                        Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal, Spacing = 2,
+                        Padding = new Thickness(10, 0, 2, 0), CornerRadius = new CornerRadius(8),
+                        Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)),
+                    };
+                    chip.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock
+                    {
+                        Text = Path.GetFileNameWithoutExtension(file), FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+                        MaxWidth = 300, TextTrimming = TextTrimming.CharacterEllipsis,
+                        Opacity = File.Exists(file) ? 1 : 0.4,
+                    });
+                    var play = SmallButton("", "Прослушать");
+                    play.Click += (_, _) => _replies.PlayFile(file, force: true);
+                    var del = SmallButton("", "Убрать");
+                    del.Click += (_, _) =>
+                    {
+                        _settings.ReplySounds[ev].Remove(file);
+                        SettingsStore.Save(_settings);
+                        BuildReplies();
+                    };
+                    chip.Children.Add(play);
+                    chip.Children.Add(del);
+                    wrap.Children.Add(chip);
+                }
+                wrap.HorizontalAlignment = HorizontalAlignment.Left;
+                Microsoft.UI.Xaml.Controls.Grid.SetRow(wrap, 1);
+                Microsoft.UI.Xaml.Controls.Grid.SetColumnSpan(wrap, 2);
+                row.Children.Add(wrap);
+            }
+            ReplyList.Children.Add(row);
+        }
+    }
+
+    private static Microsoft.UI.Xaml.Controls.Button SmallButton(string glyph, string label)
+    {
+        var b = new Microsoft.UI.Xaml.Controls.Button
+        {
+            Width = 30, Height = 30, Padding = new Thickness(0),
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(8),
+            Content = new Microsoft.UI.Xaml.Controls.FontIcon { Glyph = glyph, FontSize = 11 },
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, label);
+        Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(b, label);
+        return b;
+    }
+
+    private void RepliesToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loadingVoice) return;
+        _settings.VoiceReplies = RepliesToggle.IsOn;
+        SettingsStore.Save(_settings);
+    }
+
+    private void ReplyVolume_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (_loadingVoice) return;
+        _settings.ReplyVolume = e.NewValue / 100;
+        SettingsStore.Save(_settings);
+    }
+
+    private async Task<IReadOnlyList<string>> PickSoundsAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+        foreach (var ext in new[] { ".mp3", ".wav", ".ogg", ".m4a", ".flac" }) picker.FileTypeFilter.Add(ext);
+        var files = await picker.PickMultipleFilesAsync();
+        return files.Select(f => f.Path).ToList();
+    }
 
     private async Task<string?> PickFileAsync()
     {

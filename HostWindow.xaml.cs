@@ -29,6 +29,8 @@ public sealed partial class HostWindow : Window
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _pttWatch;
     private DateTime _pttPressedAt;
     private bool _voiceKeyRegistered;
+    private bool _pttStarting;
+    private readonly ReplyPlayer _replies;
     private string? _voiceError;
 
     public HostWindow()
@@ -48,10 +50,20 @@ public sealed partial class HostWindow : Window
         _ = _home.RefreshAsync(); // чтобы меню со сценариями было готово сразу
 
         _voice = new VoiceService(DispatcherQueue);
-        _voice.ListeningStarted += () => VoiceUi().ShowListening();
+        _replies = new ReplyPlayer(_settings);
+        _replies.PlayingChanged += playing => _voice.Suppress(playing);
+        _voice.ListeningStarted += () =>
+        {
+            VoiceUi().ShowListening();
+            if (!_pttStarting) _replies.Play(ReplyEvent.Wake); // на клавишу не отвечаем — чтобы не заглушать начало фразы
+        };
         _voice.PartialText += text => _voiceWindow?.SetText(text);
         _voice.Level += level => _voiceWindow?.SetLevel(level);
-        _voice.Cancelled += reason => _voiceWindow?.ShowCancelled(reason);
+        _voice.Cancelled += reason =>
+        {
+            _voiceWindow?.ShowCancelled(reason);
+            if (reason.Length > 0) _replies.Play(ReplyEvent.NotHeard);
+        };
         _voice.CommandRecognized += OnVoiceCommand;
         _pttWatch = DispatcherQueue.CreateTimer();
         _pttWatch.Interval = TimeSpan.FromMilliseconds(30);
@@ -86,7 +98,7 @@ public sealed partial class HostWindow : Window
             _settingsWindow.Activate();
             return;
         }
-        _settingsWindow = new SettingsWindow(_settings, _home, ApplyHotkeys, _voice, ApplyVoiceAsync);
+        _settingsWindow = new SettingsWindow(_settings, _home, ApplyHotkeys, _voice, ApplyVoiceAsync, _replies);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Activate();
     }
@@ -192,7 +204,9 @@ public sealed partial class HostWindow : Window
     {
         if (_pttWatch.IsRunning) return;
         _pttPressedAt = DateTime.Now;
+        _pttStarting = true;
         _voice.PushToTalkDown();
+        _pttStarting = false;
         _pttWatch.Start();
     }
 
@@ -217,6 +231,7 @@ public sealed partial class HostWindow : Window
         {
             CancelCountdown();
             window.ShowResult(true, "Отменено");
+            _replies.Play(ReplyEvent.Cancelled);
             return;
         }
 
@@ -230,12 +245,15 @@ public sealed partial class HostWindow : Window
             {
                 string? error = PcActions.Run(shortcut);
                 window.ShowResult(error is null, error ?? PcActions.Doing(shortcut));
+                if (error is not null) _replies.Play(ReplyEvent.Failed);
+                else _replies.Play(shortcut.Action == PcAction.OpenApp ? ReplyEvent.App : ReplyEvent.Done, shortcut.ReplySound);
             }
             return;
         }
 
         window.ShowProcessing(text);
-        var (ok, answer) = await _home.ExecuteVoiceAsync(text, _settings.PcRoomId);
+        var (ok, answer, reply) = await _home.ExecuteVoiceAsync(text, _settings.PcRoomId);
+        if (reply is { } r) _replies.Play(r);
         window.ShowResult(ok, answer);
     }
 
@@ -251,6 +269,7 @@ public sealed partial class HostWindow : Window
             _countdown.Tick += (_, _) => CountdownTick();
         }
         VoiceUi().ShowCountdown(PcActions.Doing(shortcut), _secondsLeft);
+        _replies.Play(ReplyEvent.Countdown, shortcut.ReplySound);
         _countdown.Start();
     }
 
@@ -295,6 +314,7 @@ public sealed partial class HostWindow : Window
         for (int i = 0; i < _registered.Count; i++) Win32.UnregisterHotKey(_hwnd, HotkeyIdBase + i);
         if (_voiceKeyRegistered) Win32.UnregisterHotKey(_hwnd, VoiceHotkeyId);
         _voice.Dispose();
+        _replies.Dispose();
         _voiceWindow?.Close();
         _tray.Dispose();
         _home.Dispose();

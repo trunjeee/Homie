@@ -52,6 +52,17 @@ public sealed class VoiceService : IDisposable
     public VoiceService(DispatcherQueue ui) => _ui = ui;
 
     private bool WakeEnabled => _mode is VoiceMode.WakeWord or VoiceMode.Both && !_paused;
+    private volatile bool _suppressed;
+    private DateTime _suppressUntil;
+
+    /// <summary>Играет ответ Homie — звук из колонок не должен попасть в распознавание.</summary>
+    public void Suppress(bool on)
+    {
+        _suppressed = on;
+        // После конца звука ещё немного игнорируем эхо; и страховка, если «конец» не придёт.
+        _suppressUntil = DateTime.Now + (on ? TimeSpan.FromSeconds(8) : TimeSpan.FromMilliseconds(150));
+    }
+
     /// <summary>Сейчас записывается команда.</summary>
     public bool IsListening => _state != State.Idle;
     public bool PushToTalkEnabled => _mode is VoiceMode.PushToTalk or VoiceMode.Both;
@@ -212,9 +223,16 @@ public sealed class VoiceService : IDisposable
                 Post(() => Level?.Invoke(level));
             }
 
+            var now = DateTime.Now;
+            if (_suppressed || now < _suppressUntil)
+            {
+                if (now > _suppressUntil) _suppressed = false;
+                _lastSpeech = now; // пауза на ответ не считается молчанием пользователя
+                return;
+            }
+
             bool final = _rec.AcceptWaveform(e.Buffer, e.BytesRecorded);
             string text = final ? TextOf(_rec.Result(), "text") : TextOf(_rec.PartialResult(), "partial");
-            var now = DateTime.Now;
 
             switch (_state)
             {

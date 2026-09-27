@@ -219,6 +219,28 @@
                     </StackPanel>
                 </StackPanel>
 
+                <!-- ===== Ответы голосом ===== -->
+                <StackPanel Style="{StaticResource Card}">
+                    <Grid>
+                        <TextBlock Style="{StaticResource SectionTitle}" Text="Ответы голосом" />
+                        <ToggleSwitch
+                            x:Name="RepliesToggle"
+                            MinWidth="0"
+                            HorizontalAlignment="Right"
+                            OffContent=""
+                            OnContent=""
+                            Toggled="RepliesToggle_Toggled" />
+                    </Grid>
+                    <TextBlock Style="{StaticResource Hint}" Text="Заранее записанные фразы (mp3, wav, ogg) — например из Fish Audio. На одно событие можно добавить несколько файлов, Homie выберет случайный. Файлы копируются к Homie, оригиналы можно удалить." />
+                    <Slider
+                        x:Name="ReplyVolume"
+                        Header="Громкость ответов"
+                        Maximum="100"
+                        Minimum="0"
+                        ValueChanged="ReplyVolume_ValueChanged" />
+                    <StackPanel x:Name="ReplyList" Spacing="6" />
+                </StackPanel>
+
                 <!-- ===== Горячие клавиши ===== -->
                 <StackPanel Style="{StaticResource Card}">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Горячие клавиши" />

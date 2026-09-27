@@ -472,20 +472,20 @@ public sealed partial class HomeViewModel : ObservableObject, IDisposable
     private DateTime _loadedAt;
 
     /// <summary>Выполнить фразу. Вернёт (получилось ли, что ответить в окошке).</summary>
-    public async Task<(bool Ok, string Answer)> ExecuteVoiceAsync(string text, string? pcRoomId)
+    public async Task<(bool Ok, string Answer, ReplyEvent? Reply)> ExecuteVoiceAsync(string text, string? pcRoomId)
     {
-        if (!IsSignedIn) return (false, "Умный дом не подключён");
+        if (!IsSignedIn) return (false, "Умный дом не подключён", ReplyEvent.Failed);
         // Для «ярче»/«какая температура» нужно свежее состояние.
         if (_data is null || DateTime.Now - _loadedAt > TimeSpan.FromSeconds(10)) await RefreshAsync();
-        if (_data is null) return (false, ErrorText ?? "Нет связи с умным домом");
+        if (_data is null) return (false, ErrorText ?? "Нет связи с умным домом", ReplyEvent.Failed);
 
         var intent = VoiceCommands.Parse(text, _data, SelectedHousehold?.Id, pcRoomId, out var error);
-        if (intent is null) return (false, error);
+        if (intent is null) return (false, error, ReplyEvent.NotUnderstood);
 
         if (intent.Action == VoiceAction.Scenario)
         {
             bool started = await RunAsync(() => _api.RunScenarioAsync(intent.Scenario!.Id), $"Сценарий «{intent.Scenario!.Name}» не запустился");
-            return started ? (true, $"Сценарий «{intent.Scenario!.Name}» запущен") : (false, "Сценарий не запустился");
+            return started ? (true, $"Сценарий «{intent.Scenario!.Name}» запущен", ReplyEvent.Scenario) : (false, "Сценарий не запустился", ReplyEvent.Failed);
         }
 
         if (intent.Action == VoiceAction.Query)
@@ -497,14 +497,14 @@ public sealed partial class HomeViewModel : ObservableObject, IDisposable
                 string place = d.RoomId is not null && rooms.TryGetValue(d.RoomId, out var r) ? r : d.Name;
                 return $"{place}: {DeviceItem.FormatReading(p)}";
             }).Distinct().Take(4);
-            return (true, $"{DeviceItem.ReadingLabel(intent.Property)} — " + string.Join(", ", lines));
+            return (true, $"{DeviceItem.ReadingLabel(intent.Property)} — " + string.Join(", ", lines), null);
         }
 
         var tasks = intent.Devices.Select(d => ApplyVoiceAsync(d, intent)).ToList();
         bool[] results = await Task.WhenAll(tasks);
         _ = RefreshSoonAsync();
         int ok = results.Count(r => r);
-        if (ok == 0) return (false, "Не получилось — устройство не ответило");
+        if (ok == 0) return (false, "Не получилось — устройство не ответило", ReplyEvent.Failed);
 
         string what = intent.What;
         string done = intent.Action switch
@@ -517,7 +517,7 @@ public sealed partial class HomeViewModel : ObservableObject, IDisposable
             _ => $"{Cap(what)}: {intent.ColorName}",
         };
         string count = intent.Devices.Count > 1 ? $" ({ok})" : "";
-        return (ok == results.Length, $"{done}{count} · {intent.Where}");
+        return (ok == results.Length, $"{done}{count} · {intent.Where}", intent.Action switch { VoiceAction.On => ReplyEvent.On, VoiceAction.Off => ReplyEvent.Off, _ => ReplyEvent.Done });
 
         static string Cap(string s) => s.Length == 0 ? s : char.ToUpper(s[0]) + s[1..];
     }

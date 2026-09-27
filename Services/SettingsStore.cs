@@ -31,7 +31,12 @@ public sealed class VoiceShortcut
     public PcAction Action { get; set; }
     /// <summary>Для «Открыть»: программа, файл или ссылка.</summary>
     public string Path { get; set; } = "";
+    /// <summary>Свой звук ответа («Запускаю, удачной игры»); пусто — общий из «Ответов голосом».</summary>
+    public string ReplySound { get; set; } = "";
 }
+
+/// <summary>Когда Homie отвечает голосом (заранее записанные файлы).</summary>
+public enum ReplyEvent { Wake, On, Off, Done, Scenario, App, NotUnderstood, NotHeard, Failed, Countdown, Cancelled }
 
 public sealed class AppSettings
 {
@@ -61,6 +66,12 @@ public sealed class AppSettings
 
     /// <summary>Свои команды для компьютера. null — ещё не создавались (тогда кладём стандартные).</summary>
     public List<VoiceShortcut>? VoiceShortcuts { get; set; }
+
+    /// <summary>Отвечать записанными фразами.</summary>
+    public bool VoiceReplies { get; set; } = true;
+    public double ReplyVolume { get; set; } = 0.8;
+    /// <summary>Файлы ответов по событиям; из нескольких выбирается случайный.</summary>
+    public Dictionary<ReplyEvent, List<string>> ReplySounds { get; set; } = [];
 
     public static List<VoiceShortcut> DefaultShortcuts()
     {
