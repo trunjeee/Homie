@@ -300,27 +300,72 @@ public sealed partial class HostWindow : Window
     {
         var window = VoiceUi();
         window.ShowThinking(question);
+        int session = window.Session;
+        bool speak = _settings.AiSpeak && _settings.VoiceReplies;
+
+        // Озвучка по кусочкам: каждое готовое предложение сразу синтезируется (параллельно),
+        // а звучат они строго по порядку, пока нейросеть дописывает остальное.
+        var queue = System.Threading.Channels.Channel.CreateUnbounded<Task<byte[]?>>();
+        Task speaking = speak ? SpeakQueueAsync(queue.Reader, window, session) : Task.CompletedTask;
+        int spokenUpTo = 0;
+        string raw = "";
+        void Enqueue(IEnumerable<string> sentences)
+        {
+            if (!speak) return;
+            foreach (var sentence in sentences) queue.Writer.TryWrite(SynthesizeOrNull(sentence));
+        }
+
         string answer;
         try
         {
-            answer = await _ai.AskAsync(question, _settings);
+            answer = await _ai.AskAsync(question, _settings, text =>
+            {
+                if (!window.IsActive(session)) return; // окошко закрыли — не показываем и не озвучиваем
+                raw = text;
+                window.ShowAnswer(question, text);
+                Enqueue(AiService.TakeSentences(text, ref spokenUpTo, final: false));
+            });
         }
         catch (AiException ex)
         {
+            queue.Writer.TryComplete();
             _replies.Play(ReplyEvent.Failed);
             window.ShowResult(false, ex.Message);
             return;
         }
 
-        // Текст — сразу, голос — как только синтезируется (не получилось — остаётся текст).
+        if (!window.IsActive(session)) { queue.Writer.TryComplete(); return; }
         window.ShowAnswer(question, answer);
-        if (!_settings.AiSpeak || !_settings.VoiceReplies) return;
-        try
+        // Последний кусок (без точки в конце) — из того же сырого текста, по которому считались позиции.
+        Enqueue(AiService.TakeSentences(raw.Length > 0 ? raw : answer, ref spokenUpTo, final: true));
+        queue.Writer.TryComplete();
+
+        if (!speak)
         {
-            var speech = await EdgeVoice.SynthesizeAsync(answer, _settings.AiVoice);
-            if (window.IsShowingAnswer(answer)) await _replies.PlayMp3Async(speech); // окошко не закрыли кликом
+            window.HideAfterAnswer(Math.Clamp(answer.Length * 0.09, 6, 30));
+            return;
         }
-        catch (Exception ex) when (ex is IOException or System.Net.WebSockets.WebSocketException or OperationCanceledException or HttpRequestException) { }
+        await speaking;
+        if (window.IsActive(session)) window.HideAfterAnswer(3);
+    }
+
+    private async Task<byte[]?> SynthesizeOrNull(string sentence)
+    {
+        try { return await EdgeVoice.SynthesizeAsync(sentence, _settings.AiVoice); }
+        catch (Exception ex) when (ex is IOException or System.Net.WebSockets.WebSocketException or OperationCanceledException or HttpRequestException)
+        {
+            return null; // голос недоступен — ответ остаётся текстом
+        }
+    }
+
+    private async Task SpeakQueueAsync(System.Threading.Channels.ChannelReader<Task<byte[]?>> queue, VoiceWindow window, int session)
+    {
+        await foreach (var synthesis in queue.ReadAllAsync())
+        {
+            var mp3 = await synthesis;
+            if (!window.IsActive(session)) return; // закрыли кликом — замолкаем
+            if (mp3 is not null) await _replies.PlayMp3AndWaitAsync(mp3);
+        }
     }
 
     /// <summary>Выключение и перезагрузка — через 5 секунд, чтобы случайно услышанная фраза не выключила ПК.</summary>

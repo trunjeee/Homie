@@ -40,8 +40,8 @@ public sealed class ReplyPlayer : IDisposable
     public ReplyPlayer(AppSettings settings)
     {
         _settings = settings;
-        _player.MediaEnded += (_, _) => PlayingChanged?.Invoke(false);
-        _player.MediaFailed += (_, _) => PlayingChanged?.Invoke(false);
+        _player.MediaEnded += (_, _) => Finished();
+        _player.MediaFailed += (_, _) => Finished();
     }
 
     public static string Title(ReplyEvent e) => e switch
@@ -106,12 +106,30 @@ public sealed class ReplyPlayer : IDisposable
         }
     }
 
+    private TaskCompletionSource? _done;
+
+    /// <summary>Звук доиграл (или его прервали) — отпускаем микрофон и того, кто ждёт конца.</summary>
+    private void Finished()
+    {
+        PlayingChanged?.Invoke(false);
+        _done?.TrySetResult();
+    }
+
+    /// <summary>Озвучить mp3 и дождаться конца — для ответа нейросети по предложениям.</summary>
+    public async Task PlayMp3AndWaitAsync(byte[] mp3)
+    {
+        _done?.TrySetResult();
+        var done = _done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!await PlayMp3Async(mp3)) return;
+        await Task.WhenAny(done.Task, Task.Delay(TimeSpan.FromSeconds(60)));
+    }
+
     /// <summary>Замолчать (клик по окошку).</summary>
     public void Stop()
     {
         _player.Pause();
         _player.Source = null;
-        PlayingChanged?.Invoke(false);
+        Finished();
     }
 
     /// <summary>Озвучить готовый mp3 (ответ нейросети голосом «Светланы»).</summary>

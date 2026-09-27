@@ -86,6 +86,7 @@ public sealed partial class VoiceWindow : Window
 
     public void ShowListening()
     {
+        Session++;
         _hide.Stop();
         ResetSize();
         _listening = true;
@@ -145,26 +146,33 @@ public sealed partial class VoiceWindow : Window
         ShowWindow();
     }
 
-    /// <summary>Ответ нейросети: окошко выше, текст крупнее, висит столько, сколько нужно прочитать.</summary>
+    /// <summary>Номер текущего показа: меняется при новой команде и при закрытии — чтобы старый ответ не озвучивался.</summary>
+    public int Session { get; private set; }
+
+    /// <summary>Ответ нейросети (дописывается по мере прихода): окошко выше, текст крупнее.</summary>
     public void ShowAnswer(string question, string answer)
     {
+        _hide.Stop();
+        SpeechText.Text = answer;
+        if (_tall) return; // уже показываем — только дописали текст
         _listening = false;
         RecDot.Visibility = Visibility.Collapsed;
         StatusText.Text = Capitalize(question);
-        SpeechText.Text = answer;
         SpeechText.Opacity = 1;
-        SpeechText.MaxLines = 6;
+        SpeechText.MaxLines = 7;
         SpeechText.FontSize = 15;
         ResultText.Visibility = Visibility.Collapsed;
         SetLook(Colors.White, "", Colors.Black);
         _tall = true;
         _shown = false; // пересчитать размер
         ShowWindow();
-        HideAfter(Math.Clamp(2 + answer.Length * 0.09, 7, 30)); // голос начинается чуть позже текста
     }
 
-    /// <summary>Этот ответ всё ещё на экране (не закрыли и не начали новую команду).</summary>
-    public bool IsShowingAnswer(string answer) => _shown && _tall && SpeechText.Text == answer;
+    /// <summary>Этот показ ещё на экране (не закрыли кликом и не начали новую команду).</summary>
+    public bool IsActive(int session) => _shown && Session == session;
+
+    /// <summary>Спрятать через столько секунд (после ответа — время прочитать, после речи — пару секунд).</summary>
+    public void HideAfterAnswer(double seconds) => HideAfter(seconds);
 
     /// <summary>Выключение/перезагрузка: отсчёт, клик по окошку отменяет.</summary>
     public void ShowCountdown(string doing, int secondsLeft)
@@ -203,6 +211,7 @@ public sealed partial class VoiceWindow : Window
 
     public void HideNow()
     {
+        Session++;
         _hide.Stop();
         _pulse.Stop();
         _listening = false;

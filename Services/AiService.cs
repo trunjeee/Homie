@@ -18,8 +18,11 @@ public sealed partial class AiService : IDisposable
 
     public static bool HasKey => SettingsStore.LoadAiKey() is not null;
 
-    /// <summary>Спросить; при ошибке основной модели — запасную. Бросит AiException с понятным текстом.</summary>
-    public async Task<string> AskAsync(string question, AppSettings settings, CancellationToken ct = default)
+    /// <summary>
+    /// Спросить; при ошибке основной модели — запасную. Ответ приходит потоком: onText получает
+    /// весь накопленный на данный момент текст (для озвучки по предложениям). Бросит AiException.
+    /// </summary>
+    public async Task<string> AskAsync(string question, AppSettings settings, Action<string>? onText = null, CancellationToken ct = default)
     {
         var key = SettingsStore.LoadAiKey() ?? throw new AiException("Добавь ключ OpenRouter в настройках");
         // Запасных можно несколько через запятую — пробуем по очереди.
@@ -32,7 +35,7 @@ public sealed partial class AiService : IDisposable
         {
             try
             {
-                return await AskModelAsync(key, model, question, ct);
+                return await AskModelAsync(key, model, question, onText, ct);
             }
             catch (AiException ex) when (!ex.Fatal)
             {
@@ -42,7 +45,7 @@ public sealed partial class AiService : IDisposable
         throw last!;
     }
 
-    private async Task<string> AskModelAsync(string key, string model, string question, CancellationToken ct)
+    private async Task<string> AskModelAsync(string key, string model, string question, Action<string>? onText, CancellationToken ct)
     {
         // У некоторых моделей «размышления» обязательны — тогда повторяем без отключения.
         foreach (bool disableReasoning in new[] { true, false })
@@ -52,6 +55,7 @@ public sealed partial class AiService : IDisposable
                 ["model"] = model,
                 ["max_tokens"] = 400,
                 ["temperature"] = 0.6,
+                ["stream"] = true,
                 ["messages"] = new JsonArray(
                     new JsonObject { ["role"] = "system", ["content"] = SystemPrompt() },
                     new JsonObject { ["role"] = "user", ["content"] = question }),
@@ -69,7 +73,7 @@ public sealed partial class AiService : IDisposable
             HttpResponseMessage response;
             try
             {
-                response = await _http.SendAsync(request, ct);
+                response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
@@ -78,6 +82,8 @@ public sealed partial class AiService : IDisposable
 
             using (response)
             {
+                if (response.IsSuccessStatusCode) return await ReadStreamAsync(response, model, onText, ct);
+
                 string json = await response.Content.ReadAsStringAsync(ct);
                 string server = ErrorText(json);
                 switch (response.StatusCode)
@@ -97,22 +103,81 @@ public sealed partial class AiService : IDisposable
                     case HttpStatusCode.BadRequest when disableReasoning:
                         continue;
                 }
-                if (!response.IsSuccessStatusCode)
-                    throw new AiException($"{ShortName(model)}: ошибка {(int)response.StatusCode}{(server.Length > 0 ? " — " + server : "")}");
-
-                try
-                {
-                    var answer = JsonNode.Parse(json)?["choices"]?[0]?["message"]?["content"]?.GetValue<string>();
-                    if (string.IsNullOrWhiteSpace(answer)) throw new AiException("Нейросеть вернула пустой ответ");
-                    return Clean(answer);
-                }
-                catch (Exception ex) when (ex is JsonException or InvalidOperationException)
-                {
-                    throw new AiException("Нейросеть ответила непонятно");
-                }
+                throw new AiException($"{ShortName(model)}: ошибка {(int)response.StatusCode}{(server.Length > 0 ? " — " + server : "")}");
             }
         }
         throw new AiException("Модель не приняла запрос");
+    }
+
+    /// <summary>Поток ответа (SSE): строки «data: {…}» с кусочками текста, в конце «data: [DONE]».</summary>
+    private static async Task<string> ReadStreamAsync(HttpResponseMessage response, string model, Action<string>? onText, CancellationToken ct)
+    {
+        var text = new StringBuilder();
+        try
+        {
+            using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(ct), Encoding.UTF8);
+            while (await reader.ReadLineAsync(ct) is { } line)
+            {
+                if (!line.StartsWith("data:")) continue; // пустые строки и «: OPENROUTER PROCESSING»
+                string data = line[5..].Trim();
+                if (data == "[DONE]") break;
+
+                JsonNode? chunk;
+                try { chunk = JsonNode.Parse(data); }
+                catch (JsonException) { continue; }
+
+                if (chunk?["error"] is { } error)
+                {
+                    // Ошибка посреди ответа: если что-то уже пришло — отдаём это, иначе пробуем другую модель.
+                    if (text.Length > 0) break;
+                    throw new AiException($"{ShortName(model)}: {error["message"]?.ToString() ?? "ошибка"}");
+                }
+                string? delta = chunk?["choices"]?[0]?["delta"]?["content"]?.ToString();
+                if (string.IsNullOrEmpty(delta)) continue;
+                text.Append(delta);
+                onText?.Invoke(text.ToString());
+            }
+        }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or TaskCanceledException && text.Length == 0)
+        {
+            throw new AiException("Нет связи с нейросетью — проверь интернет");
+        }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or TaskCanceledException)
+        {
+            // Связь оборвалась, но часть ответа есть — её и используем.
+        }
+
+        string answer = Clean(text.ToString());
+        if (answer.Length == 0) throw new AiException($"{ShortName(model)} вернула пустой ответ");
+        return answer;
+    }
+
+    /// <summary>
+    /// Разбить накопленный ответ на готовые предложения для озвучки. Вернёт новые законченные
+    /// предложения начиная с позиции from и сдвинет её. Короткие куски склеиваются, чтобы речь не рвалась.
+    /// </summary>
+    public static List<string> TakeSentences(string text, ref int from, bool final)
+    {
+        var result = new List<string>();
+        int start = from;
+        for (int i = from; i < text.Length; i++)
+        {
+            bool end = text[i] is '.' or '!' or '?' or '…' or '\n';
+            bool boundary = end && (i + 1 == text.Length ? final : char.IsWhiteSpace(text[i + 1]));
+            if (boundary && text[i] == '.' && i >= 2 && text[i - 2] == '.') continue; // «т.е.», «т.к.», «т.д.»
+            if (!boundary || i + 1 - start < 25) continue; // совсем короткие куски — ждём продолжения
+            string sentence = Clean(text[start..(i + 1)]);
+            if (sentence.Length > 0) result.Add(sentence);
+            start = i + 1;
+        }
+        if (final && start < text.Length)
+        {
+            string rest = Clean(text[start..]);
+            if (rest.Length > 0) result.Add(rest);
+            start = text.Length;
+        }
+        from = start;
+        return result;
     }
 
     /// <summary>Текст ошибки от OpenRouter/поставщика (коротко).</summary>
