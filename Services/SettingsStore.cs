@@ -79,15 +79,15 @@ public sealed class AppSettings
         static List<string> B(params string[] names) => [.. names.Select(n => ReplyPlayer.BuiltIn + n + ".mp3")];
         return new()
         {
-            [ReplyEvent.Wake] = B("Пиип"),
-            [ReplyEvent.On] = B("Включаю"),
-            [ReplyEvent.Off] = B("Выключаю"),
+            [ReplyEvent.Wake] = B("Слушаю", "Пиип"),
+            [ReplyEvent.On] = B("Включаю", "Сейчас будет светло", "Готово, включила"),
+            [ReplyEvent.Off] = B("Выключаю", "Выключила", "Готово, темно"),
             [ReplyEvent.Done] = B("Готово", "Сделано", "Есть", "Конечно"),
-            [ReplyEvent.Scenario] = B("Конечно", "Готово"),
-            [ReplyEvent.App] = B("Запускаю, удачной игры"),
-            [ReplyEvent.NotUnderstood] = B("Не поняла, повтори"),
+            [ReplyEvent.Scenario] = B("Запускаю сценарий"),
+            [ReplyEvent.App] = B("Запускаю, удачной игры", "Погнали! Удачи в катке"),
+            [ReplyEvent.NotUnderstood] = B("Не поняла, повтори", "Прости, не поняла"),
             [ReplyEvent.NotHeard] = B("Не поняла, повтори"),
-            [ReplyEvent.Failed] = B("Не получилось"),
+            [ReplyEvent.Failed] = B("Не получилось", "Ой, что-то пошло не так", "Не получилось, устройство не отвечает"),
             [ReplyEvent.Countdown] = B("Выключаю компьютер через пять секунд"),
             [ReplyEvent.Cancelled] = B("Отменено"),
         };
@@ -98,9 +98,9 @@ public sealed class AppSettings
         var list = new List<VoiceShortcut>
         {
             new() { Action = PcAction.Shutdown, Phrases = "выключи компьютер, выключи комп, выключи пк, выключи пека, выключи писи, выруби комп, выруби компьютер, выключи компик" },
-            new() { Action = PcAction.Restart, Phrases = "перезагрузи компьютер, перезагрузи комп, перезагрузи пк, перезагрузка, перезагрузи" },
-            new() { Action = PcAction.Sleep, Phrases = "спящий режим, усыпи компьютер, режим сна" },
-            new() { Action = PcAction.Lock, Phrases = "заблокируй компьютер, блокировка, заблокируй" },
+            new() { Action = PcAction.Restart, ReplySound = ReplyPlayer.BuiltIn + "Перезагружаю компьютер через пять секунд.mp3", Phrases = "перезагрузи компьютер, перезагрузи комп, перезагрузи пк, перезагрузка, перезагрузи" },
+            new() { Action = PcAction.Sleep, ReplySound = ReplyPlayer.BuiltIn + "Спокойной ночи.mp3", Phrases = "спящий режим, усыпи компьютер, режим сна" },
+            new() { Action = PcAction.Lock, ReplySound = ReplyPlayer.BuiltIn + "Блокирую. Возвращайся скорее.mp3", Phrases = "заблокируй компьютер, блокировка, заблокируй" },
             new() { Action = PcAction.MonitorOff, Phrases = "выключи экран, выключи монитор, погаси экран" },
             new() { Action = PcAction.Mute, Phrases = "выключи звук, включи звук, без звука" },
             new() { Action = PcAction.VolumeUp, Phrases = "громче, сделай громче" },
