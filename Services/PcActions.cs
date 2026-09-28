@@ -26,6 +26,8 @@ public static class PcActions
         PcAction.PlayPause => "Пауза / продолжить",
         PcAction.NextTrack => "Следующий трек",
         PcAction.PreviousTrack => "Предыдущий трек",
+        PcAction.Pause => "Пауза (видео, музыка)",
+        PcAction.Resume => "Продолжить (видео, музыка)",
         _ => a.ToString(),
     };
 
@@ -68,7 +70,7 @@ public static class PcActions
     }
 
     /// <summary>Выполнить. Вернёт текст ошибки или null.</summary>
-    public static string? Run(VoiceShortcut s)
+    public static async Task<string?> RunAsync(VoiceShortcut s)
     {
         try
         {
@@ -93,6 +95,8 @@ public static class PcActions
                 case PcAction.PlayPause: Win32.SendChord(0xB3); break;
                 case PcAction.NextTrack: Win32.SendChord(0xB0); break;
                 case PcAction.PreviousTrack: Win32.SendChord(0xB1); break;
+                case PcAction.Pause: return await MediaAsync(play: false);
+                case PcAction.Resume: return await MediaAsync(play: true);
             }
             return null;
         }
@@ -104,6 +108,33 @@ public static class PcActions
         {
             return ex.Message;
         }
+    }
+
+    /// <summary>
+    /// Пауза/продолжить именно то, что играет (видео в браузере, музыка) — через медиасеансы Windows,
+    /// а не переключателем «плей/пауза»: «продолжи» не поставит на паузу, если уже играет.
+    /// </summary>
+    private static async Task<string?> MediaAsync(bool play)
+    {
+        var manager = await Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+        var sessions = manager.GetSessions();
+        const Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus playing =
+            Windows.Media.Control.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+
+        if (!play)
+        {
+            var active = sessions.Where(s => s.GetPlaybackInfo()?.PlaybackStatus == playing).ToList();
+            if (active.Count == 0) return "Сейчас ничего не играет";
+            foreach (var s in active) await s.TryPauseAsync();
+            return null;
+        }
+
+        // Продолжить — последнее, что играло (Windows держит его «текущим»), иначе любое на паузе.
+        var session = manager.GetCurrentSession()
+            ?? sessions.FirstOrDefault(s => s.GetPlaybackInfo()?.Controls.IsPlayEnabled == true);
+        if (session is null) return "Нечего продолжать";
+        if (session.GetPlaybackInfo()?.PlaybackStatus == playing) return null; // уже играет
+        return await session.TryPlayAsync() ? null : "Плеер не ответил";
     }
 
     private static void Shutdown(string args) =>

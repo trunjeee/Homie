@@ -268,7 +268,7 @@ public sealed partial class HostWindow : Window
             if (PcActions.NeedsCountdown(shortcut.Action)) StartCountdown(shortcut);
             else
             {
-                string? error = PcActions.Run(shortcut);
+                string? error = await PcActions.RunAsync(shortcut);
                 window.ShowResult(error is null, error ?? PcActions.Doing(shortcut));
                 if (error is not null) _replies.Play(ReplyEvent.Failed);
                 else _replies.Play(shortcut.Action == PcAction.OpenApp ? ReplyEvent.App : ReplyEvent.Done, shortcut.ReplySound);
@@ -384,7 +384,7 @@ public sealed partial class HostWindow : Window
         _countdown.Start();
     }
 
-    private void CountdownTick()
+    private async void CountdownTick()
     {
         if (_pending is null) { _countdown?.Stop(); return; }
         _secondsLeft--;
@@ -396,7 +396,7 @@ public sealed partial class HostWindow : Window
         }
         var shortcut = _pending;
         CancelCountdown();
-        string? error = PcActions.Run(shortcut);
+        string? error = await PcActions.RunAsync(shortcut);
         VoiceUi().ShowResult(error is null, error ?? PcActions.Doing(shortcut));
     }
 

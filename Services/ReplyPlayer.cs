@@ -40,6 +40,10 @@ public sealed class ReplyPlayer : IDisposable
     public ReplyPlayer(AppSettings settings)
     {
         _settings = settings;
+        // Ответы Homie — не «мультимедиа»: иначе Windows делает Homie текущим плеером, и клавиша
+        // «плей/пауза» повторяет последний ответ вместо того, чтобы продолжить видео или музыку.
+        _player.CommandManager.IsEnabled = false;
+        _player.SystemMediaTransportControls.IsEnabled = false;
         _player.MediaEnded += (_, _) => Finished();
         _player.MediaFailed += (_, _) => Finished();
     }

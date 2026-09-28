@@ -21,7 +21,7 @@ public sealed class HotkeyBinding
 public enum PcAction
 {
     OpenApp, Shutdown, Restart, Sleep, Hibernate, Lock, SignOut, MonitorOff,
-    Mute, VolumeUp, VolumeDown, PlayPause, NextTrack, PreviousTrack,
+    Mute, VolumeUp, VolumeDown, PlayPause, NextTrack, PreviousTrack, Pause, Resume,
 }
 
 /// <summary>Своя голосовая команда: фразы через запятую → действие с компьютером.</summary>
@@ -127,7 +127,8 @@ public sealed class AppSettings
             new() { Action = PcAction.Mute, Phrases = "выключи звук, включи звук, без звука" },
             new() { Action = PcAction.VolumeUp, Phrases = "громче, сделай громче" },
             new() { Action = PcAction.VolumeDown, Phrases = "тише, сделай тише" },
-            new() { Action = PcAction.PlayPause, Phrases = "пауза, продолжи, поставь на паузу" },
+            new() { Action = PcAction.Pause, Phrases = "пауза, поставь на паузу, на паузу, останови видео, останови музыку, стоп" },
+            new() { Action = PcAction.Resume, Phrases = "продолжи, продолжай, продолжи видео, продолжи музыку, сними с паузы, плей" },
             new() { Action = PcAction.NextTrack, Phrases = "следующий трек, следующая песня, дальше" },
         };
         const string faceit = @"C:\Program Files\FACEIT AC\faceitclient.exe";
