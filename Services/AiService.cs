@@ -35,7 +35,7 @@ public sealed partial class AiService : IDisposable
         {
             try
             {
-                return await AskModelAsync(key, model, question, onText, ct);
+                return await AskModelAsync(key, model, question, SystemPrompt(settings.AiVoice), onText, ct);
             }
             catch (AiException ex) when (!ex.Fatal)
             {
@@ -45,7 +45,7 @@ public sealed partial class AiService : IDisposable
         throw last!;
     }
 
-    private async Task<string> AskModelAsync(string key, string model, string question, Action<string>? onText, CancellationToken ct)
+    private async Task<string> AskModelAsync(string key, string model, string question, string systemPrompt, Action<string>? onText, CancellationToken ct)
     {
         // У некоторых моделей «размышления» обязательны — тогда повторяем без отключения.
         foreach (bool disableReasoning in new[] { true, false })
@@ -57,7 +57,7 @@ public sealed partial class AiService : IDisposable
                 ["temperature"] = 0.6,
                 ["stream"] = true,
                 ["messages"] = new JsonArray(
-                    new JsonObject { ["role"] = "system", ["content"] = SystemPrompt() },
+                    new JsonObject { ["role"] = "system", ["content"] = systemPrompt },
                     new JsonObject { ["role"] = "user", ["content"] = question }),
             };
             if (disableReasoning) body["reasoning"] = new JsonObject { ["effort"] = "none" };
@@ -199,8 +199,12 @@ public sealed partial class AiService : IDisposable
 
     private static string ShortName(string model) => model.Split('/').Last().Replace(":free", "");
 
-    private static string SystemPrompt() =>
+    /// <summary>Род — по голосу: «Светлана» говорит о себе в женском роде («я поняла»), «Дмитрий» — в мужском.</summary>
+    private static string SystemPrompt(string voice) =>
         "Ты — Хоуми, голосовой помощник на компьютере пользователя (умный дом, игры, повседневные вопросы). " +
+        (voice == EdgeVoice.Dmitry
+            ? "Говори о себе в мужском роде (я понял, я нашёл, я рад). "
+            : "Ты девушка: говори о себе только в женском роде (я поняла, я нашла, я рада, я сделала). ") +
         "Отвечай по-русски, дружелюбно и коротко: одно-два предложения. Ответ будет озвучен голосом, " +
         "поэтому без списков, markdown, эмодзи и ссылок; единицы измерения пиши словами. " +
         $"Сейчас {DateTime.Now:dd.MM.yyyy HH:mm}.";

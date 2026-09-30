@@ -149,7 +149,7 @@ public sealed class VoiceService : IDisposable
                 return;
             }
             string text = Join(_pttText, TextOf(_rec.FinalResult(), "text"));
-            if (text.Length == 0) Cancel("Ничего не услышал");
+            if (text.Length == 0) Cancel("Ничего не услышала");
             else Finish(text);
         }
     }
@@ -257,7 +257,7 @@ public sealed class VoiceService : IDisposable
                         Post(() => PartialText?.Invoke(command));
                     }
                     if (final && command.Length > 0) Finish(command);
-                    else if (now - _lastSpeech > SilenceTimeout || now - _commandStarted > CommandTimeout) Cancel("Не расслышал");
+                    else if (now - _lastSpeech > SilenceTimeout || now - _commandStarted > CommandTimeout) Cancel("Не расслышала");
                     break;
 
                 case State.PushToTalk:

@@ -24,7 +24,7 @@ public sealed record VoiceIntent(VoiceAction Action, IReadOnlyList<Device> Devic
 public static class VoiceCommands
 {
     /// <summary>Фраза не похожа ни на одну команду — такую можно отдать нейросети.</summary>
-    public const string NotUnderstood = "Не понял команду";
+    public const string NotUnderstood = "Не поняла команду";
 
     private static readonly string[] OffVerbs = ["выключ", "выруб", "погас", "отключ", "потуш", "туши", "выкл"];
     private static readonly string[] OnVerbs = ["включ", "вруб", "зажг", "зажеч", "вкл"];
@@ -223,7 +223,7 @@ public static class VoiceCommands
                     if (targets.Count is > 0 and <= 1) where = RoomName(targets[0], rooms);
                     else targets = [];
                 }
-                if (targets.Count == 0) { error = $"Не нашёл: {what} — {where}"; return null; }
+                if (targets.Count == 0) { error = $"Не нашла: {what} — {where}"; return null; }
             }
         }
         else if (byName.Count > 0)
