@@ -502,64 +502,75 @@
                                 Content="Новый ключ" />
                         </Grid>
 
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock
-                                x:Name="RelayStatus"
-                                VerticalAlignment="Center"
-                                FontSize="13"
-                                TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button
-                                Grid.Column="1"
                                 Click="CopySkillCode_Click"
                                 CornerRadius="10"
                                 Content="Скопировать код навыка" />
                             <Button
+                                Click="SaveSkillIcon_Click"
+                                CornerRadius="10"
+                                Content="Сохранить иконку" />
+                            <Button
                                 x:Name="RelayTestButton"
-                                Grid.Column="2"
                                 Click="RelayTest_Click"
                                 CornerRadius="10"
                                 Content="Проверить" />
-                        </Grid>
+                        </StackPanel>
+                        <TextBlock
+                            x:Name="RelayStatus"
+                            FontSize="13"
+                            TextWrapping="Wrap" />
 
-                        <!-- Инструкция — тоже свёрнута -->
+                        <!-- Инструкция — тоже свёрнута. Сверено с интерфейсом Яндекса (сентябрь 2026). -->
                         <Expander
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Stretch"
                             Background="Transparent"
                             BorderThickness="0"
                             Header="Как настроить навык (один раз, минут 10)">
-                            <TextBlock
-                                FontSize="13"
-                                LineHeight="21"
-                                TextWrapping="Wrap">
-                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="1. Создай навык." />
-                                <Run Text="Открой" />
-                                <Hyperlink NavigateUri="https://dialogs.yandex.ru/developer">dialogs.yandex.ru/developer</Hyperlink>
-                                <Run Text="(вход тем же Яндекс ID, что на колонках) → «Создать диалог» → «Навык»." />
-                                <LineBreak />
-                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="2. Имя." />
-                                <Run Text="«Название» и «Активационное имя» — любое, по нему будешь звать навык, например «Хоуми». Доступ — «Приватный» (навык увидишь только ты)." />
-                                <LineBreak />
-                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="3. Функция." />
-                                <Run Text="В «Backend» выбери «Функция в Yandex Cloud» → «Создать функцию». Откроется Яндекс Облако: при первом входе оно попросит завести платёжный аккаунт — вызовы от навыков Алисы бесплатны." />
-                                <LineBreak />
-                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="4. Код." />
-                                <Run Text="В функции «Создать версию»: среда Python 3.12, «Редактор кода» → файл index.py → удали пример и вставь код кнопкой «Скопировать код навыка». Точка входа: index.handler, таймаут 5 секунд." />
-                                <LineBreak />
-                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="5. Ключ." />
-                                <Run Text="Там же, в «Переменные окружения»: имя HOMIE_KEY, значение — «Ключ связи» (кнопка «Скопировать»). Нажми «Сохранить изменения»." />
-                                <LineBreak />
-                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="6. Публикация." />
-                                <Run Text="Вернись в навык, выбери созданную функцию, сохрани и нажми «Опубликовать» (приватные навыки проверяются быстро)." />
-                                <LineBreak />
-                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="7. Готово." />
-                                <Run Text="Включи «Принимать сообщения», нажми «Проверить» — ПК скажет «проверка связи». Потом колонке: «Алиса, попроси Хоуми передать: привет»." />
-                            </TextBlock>
+                            <StackPanel Spacing="10">
+                                <TextBlock
+                                    FontSize="13"
+                                    LineHeight="21"
+                                    TextWrapping="Wrap">
+                                    <Run FontFamily="{StaticResource AppFontSemiBold}" Text="Сначала функция в облаке, потом навык — навыку нужно выбрать готовую функцию." />
+                                    <LineBreak />
+                                    <LineBreak />
+                                    <Run FontFamily="{StaticResource AppFontSemiBold}" Text="1. Включи «Принимать сообщения»" />
+                                    <Run Text="выше — появится «Ключ связи»." />
+                                    <LineBreak />
+                                    <Run FontFamily="{StaticResource AppFontSemiBold}" Text="2. Функция." />
+                                    <Run Text="Открой" />
+                                    <Hyperlink NavigateUri="https://console.yandex.cloud/">console.yandex.cloud</Hyperlink>
+                                    <Run Text="→ Cloud Functions (первый раз облако попросит завести платёжный аккаунт — функции для навыков Алисы не тарифицируются) → «Создать функцию» → Имя: homie → «Создать»." />
+                                    <LineBreak />
+                                    <Run FontFamily="{StaticResource AppFontSemiBold}" Text="3. Код." />
+                                    <Run Text="Во вкладке «Редактор» выбери Python (3.12 или новее) → «Продолжить». В файле index.py удали пример и вставь код — кнопка «Скопировать код навыка». Точка входа: index.handler." />
+                                    <LineBreak />
+                                    <Run FontFamily="{StaticResource AppFontSemiBold}" Text="4. Параметры." />
+                                    <Run Text="Таймаут — 5 секунд (по умолчанию 3 — мало). Память 128 МБ, сервисный аккаунт и сеть не нужны. «Переменные окружения»: Ключ — HOMIE_KEY, Значение — «Ключ связи» (кнопка «Скопировать»). Нажми «Сохранить изменения» внизу." />
+                                    <LineBreak />
+                                    <Run FontFamily="{StaticResource AppFontSemiBold}" Text="5. Проверка функции (необязательно)." />
+                                    <Run Text="Вкладка «Тестирование» → вставь тестовый запрос (кнопка ниже) → «Запустить тест». Этот ПК скажет «Тебе передали: привет от функции»." />
+                                    <LineBreak />
+                                    <Run FontFamily="{StaticResource AppFontSemiBold}" Text="6. Навык." />
+                                    <Run Text="Открой" />
+                                    <Hyperlink NavigateUri="https://dialogs.yandex.ru/developer">dialogs.yandex.ru/developer</Hyperlink>
+                                    <Run Text="(тот же Яндекс ID, что на колонках) → «Создать диалог» → «Навык». Заполни: Название — «Хоуми» (им будешь звать навык); Описание — любое; Backend — «Функция в Яндекс Облаке» → homie; Тип доступа — «Приватный» (модерация не нужна); Категория — любая; Имя разработчика — любое; Иконка — кнопка «Сохранить иконку». Хранилище, сайт, AppMetrica и RTB не трогай." />
+                                    <LineBreak />
+                                    <Run FontFamily="{StaticResource AppFontSemiBold}" Text="7. Публикация." />
+                                    <Run Text="«Сохранить», затем «Опубликовать»." />
+                                    <LineBreak />
+                                    <Run FontFamily="{StaticResource AppFontSemiBold}" Text="8. Готово." />
+                                    <Run Text="Колонке: «Алиса, попроси Хоуми передать: привет». Если Алиса плохо слышит «Хоуми», в навыке добавь активационное имя «Хоми»." />
+                                </TextBlock>
+                                <Button
+                                    HorizontalAlignment="Left"
+                                    Click="CopyTestRequest_Click"
+                                    CornerRadius="10"
+                                    Content="Скопировать тестовый запрос" />
+                            </StackPanel>
                         </Expander>
                     </StackPanel>
                 </Expander>

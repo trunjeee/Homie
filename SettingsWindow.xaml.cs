@@ -678,6 +678,38 @@ public sealed partial class SettingsWindow : Window
         RelayStatus.Text = "Код навыка скопирован — вставь его в index.py функции";
     }
 
+    /// <summary>Иконка 224×224 для навыка — сохраняем в «Загрузки» и показываем в Проводнике.</summary>
+    private void SaveSkillIcon_Click(object sender, RoutedEventArgs e)
+    {
+        using var stream = typeof(SettingsWindow).Assembly.GetManifestResourceStream("alice-skill/icon.png");
+        if (stream is null) { RelayStatus.Text = "Иконка не найдена в сборке"; return; }
+        string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+        Directory.CreateDirectory(folder);
+        string file = Path.Combine(folder, "homie-skill-icon.png");
+        using (var target = File.Create(file)) stream.CopyTo(target);
+        Process.Start("explorer.exe", $"/select,\"{file}\"");
+        RelayStatus.Text = "Иконка сохранена в «Загрузки»: homie-skill-icon.png";
+    }
+
+    /// <summary>Запрос «как от Алисы» для вкладки «Тестирование» в облаке — проверить функцию до навыка.</summary>
+    private void CopyTestRequest_Click(object sender, RoutedEventArgs e)
+    {
+        const string json = """
+            {
+              "version": "1.0",
+              "session": { "new": true },
+              "request": {
+                "command": "передай привет от функции",
+                "original_utterance": "передай привет от функции"
+              }
+            }
+            """;
+        var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        data.SetText(json);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+        RelayStatus.Text = "Тестовый запрос скопирован — вставь его во вкладке «Тестирование» функции";
+    }
+
     /// <summary>Отправить себе подписанное сообщение тем же каналом, что и навык.</summary>
     private async void RelayTest_Click(object sender, RoutedEventArgs e)
     {

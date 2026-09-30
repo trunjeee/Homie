@@ -42,6 +42,7 @@
     <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
     <!-- Код навыка Алисы — внутри программы, чтобы скопировать его кнопкой в настройках -->
     <EmbeddedResource Include="alice-skill\index.py" LogicalName="alice-skill/index.py" />
+    <EmbeddedResource Include="alice-skill\icon.png" LogicalName="alice-skill/icon.png" />
   </ItemGroup>
 
 </Project>

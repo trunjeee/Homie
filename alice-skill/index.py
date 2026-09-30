@@ -53,10 +53,8 @@ def extract_message(utterance: str) -> str:
     return text.strip().strip(QUOTES).strip()
 
 
-def reply(text: str, end: bool = True, state: dict | None = None) -> dict:
+def reply(text: str, end: bool = True) -> dict:
     resp = {"version": "1.0", "response": {"text": text, "end_session": end}}
-    if state is not None:
-        resp["session_state"] = state
     return resp
 
 
@@ -72,15 +70,13 @@ def handler(event, context):
 
     request = event.get("request") or {}
     utterance = (request.get("original_utterance") or request.get("command") or "").strip()
-    state = (event.get("state") or {}).get("session") or {}
 
-    # «Алиса, запусти Хоуми» без текста — спрашиваем, что передать.
-    if session.get("new") and not utterance:
-        return reply("Что передать на компьютер?", end=False, state={"waiting": True})
+    # «Алиса, запусти Хоуми» без текста — спрашиваем, что передать (сессия остаётся открытой,
+    # следующая фраза — само сообщение; хранилище навыка для этого не нужно).
+    if not utterance:
+        return reply("Что передать на компьютер?", end=False)
 
-    message = utterance if state.get("waiting") else extract_message(utterance)
-    if not message:
-        return reply("Что передать на компьютер?", end=False, state={"waiting": True})
+    message = extract_message(utterance) or utterance
     if message.lower() in ("отмена", "стоп", "ничего", "не надо", "выход"):
         return reply("Хорошо, ничего не передаю.")
 
