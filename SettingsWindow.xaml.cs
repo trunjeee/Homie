@@ -62,6 +62,8 @@ public sealed partial class SettingsWindow : Window
         _hotkeys = new ObservableCollection<HotkeyBinding>(settings.Hotkeys);
         HotkeyList.ItemsSource = _hotkeys;
         UpdateStatus();
+        // Не подключено — раздел подключения сразу раскрыт, остальное свёрнуто.
+        ConnectionExpander.IsExpanded = !_home.IsSignedIn;
         LoadVoice();
         _ = LoadTargetsAsync();
     }
@@ -95,6 +97,7 @@ public sealed partial class SettingsWindow : Window
         SettingsStore.DeleteToken();
         _home.IsSignedIn = false;
         UpdateStatus();
+        ConnectionExpander.IsExpanded = true;
     }
 
     private void UpdateStatus()
@@ -104,6 +107,7 @@ public sealed partial class SettingsWindow : Window
         StatusText.Text = _home.IsSignedIn && _home.Data is { } data
             ? $"✓ Подключено: устройств — {data.Devices.Count(d => !d.IsGroup)}, сценариев — {data.Scenarios.Count}"
             : _home.IsSignedIn ? "✓ Подключено" : _home.ErrorText ?? "Не подключено";
+        ConnectionHeaderStatus.Text = StatusText.Text;
     }
 
     // ---------- комнаты: порядок и видимость ----------
