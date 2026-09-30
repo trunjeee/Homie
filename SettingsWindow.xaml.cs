@@ -633,7 +633,7 @@ public sealed partial class SettingsWindow : Window
 
     private void UpdateRelayStatus(bool connected)
     {
-        RelayHeaderStatus.Text = !_settings.AliceRelayEnabled ? "Выключено — «Алиса, попроси Хоуми передать: …», и этот ПК скажет это голосом"
+        RelayHeaderStatus.Text = !_settings.AliceRelayEnabled ? "Выключено — «Алиса, попроси помощника Хоуми передать: …», и этот ПК скажет это голосом"
             : connected ? "✓ Включено, слушаю сообщения от навыка" : "Включено, подключаюсь к каналу…";
         RelayStatus.Text = !_settings.AliceRelayEnabled ? "Выключено"
             : connected ? "✓ Слушаю сообщения от навыка" : "Подключаюсь к каналу…";
