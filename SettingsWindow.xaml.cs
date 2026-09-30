@@ -649,8 +649,16 @@ public sealed partial class SettingsWindow : Window
         UpdateRelayStatus(_relay.IsConnected);
     }
 
+    /// <summary>Раз настраивают навык — приём точно нужен: включаем сами, чтобы не забыть переключатель.</summary>
+    private void EnsureRelayOn()
+    {
+        if (_settings.AliceRelayEnabled) return;
+        RelayToggle.IsOn = true; // Toggled сохранит настройку и запустит канал
+    }
+
     private void CopyRelayKey_Click(object sender, RoutedEventArgs e)
     {
+        EnsureRelayOn();
         var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
         data.SetText(RelayKeyBox.Text);
         Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
@@ -669,6 +677,7 @@ public sealed partial class SettingsWindow : Window
     /// <summary>Код навыка для Yandex Cloud — встроен в Homie, в код программы лезть не нужно.</summary>
     private void CopySkillCode_Click(object sender, RoutedEventArgs e)
     {
+        EnsureRelayOn();
         using var stream = typeof(SettingsWindow).Assembly.GetManifestResourceStream("alice-skill/index.py");
         if (stream is null) { RelayStatus.Text = "Код навыка не найден в сборке"; return; }
         using var reader = new StreamReader(stream);

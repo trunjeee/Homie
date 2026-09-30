@@ -13,6 +13,7 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
 ![WinUI 3](https://img.shields.io/badge/WinUI-3-6E4AFF)
 ![Офлайн-распознавание](https://img.shields.io/badge/голос-офлайн-2EA043)
+![MIT](https://img.shields.io/badge/лицензия-MIT-lightgrey)
 
 </div>
 
@@ -136,3 +137,7 @@ NAudio · [API умного дома Яндекса](https://yandex.ru/dev/dialo
 OpenRouter · Yandex Cloud Functions + [ntfy](https://ntfy.sh) для навыка Алисы.
 
 Проект личный и неофициальный — Homie не связан с Яндексом.
+
+## Лицензия
+
+[MIT](LICENSE) — пользуйся, меняй и делись, указывая автора.
