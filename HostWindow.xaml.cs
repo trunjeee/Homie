@@ -99,6 +99,12 @@ public sealed partial class HostWindow : Window
         _relay.MessageReceived += OnAliceMessage;
         ApplyRelay();
 
+        // Обновления: первая проверка через минуту после запуска, дальше раз в 6 часов.
+        _updateTimer = DispatcherQueue.CreateTimer();
+        _updateTimer.Interval = TimeSpan.FromMinutes(1);
+        _updateTimer.Tick += (_, _) => { _updateTimer.Interval = TimeSpan.FromHours(6); _ = CheckUpdatesAsync(manual: false); };
+        _updateTimer.Start();
+
         // Первый запуск без подключения — сразу открываем настройки.
         if (SettingsStore.LoadToken() is null) OpenSettings();
     }
@@ -161,6 +167,11 @@ public sealed partial class HostWindow : Window
         items.Add(new("Настройки…", OpenSettings));
         items.Add(TrayMenuItem.Separator);
         items.Add(new("Запускать вместе с Windows", () => StartupService.SetEnabled(!StartupService.IsEnabled), StartupService.IsEnabled));
+        if (_updates.ReadyVersion is { } ready)
+            items.Add(new($"⬆  Обновить до {ready} (перезапуск)", _updates.ApplyAndRestart));
+        else if (_updates.IsInstalled)
+            items.Add(new("Проверить обновления", () => _ = CheckUpdatesAsync(manual: true)));
+        items.Add(TrayMenuItem.Info($"Homie {_updates.CurrentVersion}"));
         items.Add(new("Выход", Quit));
         return items;
     }
@@ -297,6 +308,19 @@ public sealed partial class HostWindow : Window
         }
         if (reply is { } r) _replies.Play(r);
         window.ShowResult(ok, answer);
+    }
+
+    private readonly UpdateService _updates = new();
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _updateTimer;
+
+    /// <summary>Скачать новую версию в фоне и сказать об этом уведомлением.</summary>
+    private async Task CheckUpdatesAsync(bool manual)
+    {
+        string? version = await _updates.CheckAndDownloadAsync();
+        if (version is not null)
+            _tray.ShowNotification("Homie", $"Готово обновление {version} — «Обновить» в меню трея или просто при следующем запуске");
+        else if (manual)
+            _tray.ShowNotification("Homie", _updates.ReadyVersion is null ? $"У тебя последняя версия — {_updates.CurrentVersion}" : $"Обновление {_updates.ReadyVersion} уже скачано");
     }
 
     private readonly AiService _ai = new();
@@ -464,6 +488,8 @@ public sealed partial class HostWindow : Window
         _ai.Dispose();
         _relay.Dispose();
         _voiceWindow?.Close();
+        _updateTimer.Stop();
+        _updates.ApplyOnExit(); // скачанное обновление встанет само к следующему запуску
         _tray.Dispose();
         _home.Dispose();
         Win32.RemoveWindowSubclass(_hwnd, _wndProc, 1);
