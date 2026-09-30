@@ -1,4 +1,4 @@
-# Сборка релиза Homie для GitHub Releases (Velopack).
+﻿# Сборка релиза Homie для GitHub Releases (Velopack).
 #
 #   .\scripts\release.ps1 1.2.0
 #
@@ -14,7 +14,7 @@ param([Parameter(Mandatory)][string]$Version)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $vpk = 'D:\repos\tools\vpk\vpk.exe'
-$input = Join-Path $root 'release\vpk-input'
+$packDir = Join-Path $root 'release\vpk-input'
 $out = Join-Path $root 'releases'
 
 # 1. Версия
@@ -28,9 +28,9 @@ if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 & $vpk download github --repoUrl https://github.com/trunjeee/Homie --outputDir $out
 
 # 3. Сборка и упаковка
-if (Test-Path $input) { Remove-Item $input -Recurse -Force }
-dotnet publish $csproj -c Release -o $input -nologo -v q
-& $vpk pack --packId HomieApp --packVersion $Version --runtime win-x64 --packDir $input --mainExe Homie.exe `
+if (Test-Path $packDir) { Remove-Item $packDir -Recurse -Force }
+dotnet publish $csproj -c Release -o $packDir -nologo -v q
+& $vpk pack --packId HomieApp --packVersion $Version --runtime win-x64 --packDir $packDir --mainExe Homie.exe `
     --packTitle Homie --packAuthors trunjeee --icon (Join-Path $root 'Assets\home.ico') --outputDir $out
 
 Write-Host "`nГотово. Загрузи в релиз v$Version эти файлы:" -ForegroundColor Green
