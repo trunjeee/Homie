@@ -134,16 +134,29 @@
                 </StackPanel>
                 </Expander>
 
-                <!-- ===== Комнаты ===== -->
-                <StackPanel Style="{StaticResource Card}">
-                    <TextBlock Style="{StaticResource SectionTitle}" Text="Комнаты" />
+                <!-- ===== Комнаты (раскрыто по умолчанию) ===== -->
+                <Expander IsExpanded="True" Style="{StaticResource CardExpander}">
+                    <Expander.Header>
+                        <StackPanel Style="{StaticResource ExpanderHeader}">
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Комнаты" />
+                            <TextBlock Style="{StaticResource Hint}" Text="Порядок в панели и какие комнаты показывать" />
+                        </StackPanel>
+                    </Expander.Header>
+                <StackPanel Spacing="12">
                     <TextBlock Style="{StaticResource Hint}" Text="Порядок в панели сверху вниз. Часто используемые подними наверх, ненужные — скрой." />
                     <StackPanel x:Name="RoomOrderList" Spacing="6" />
                 </StackPanel>
+                </Expander>
 
-                <!-- ===== Группы ===== -->
-                <StackPanel Style="{StaticResource Card}">
-                    <TextBlock Style="{StaticResource SectionTitle}" Text="Группы" />
+                <!-- ===== Группы (раскрыто по умолчанию) ===== -->
+                <Expander IsExpanded="True" Style="{StaticResource CardExpander}">
+                    <Expander.Header>
+                        <StackPanel Style="{StaticResource ExpanderHeader}">
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Группы" />
+                            <TextBlock Style="{StaticResource Hint}" Text="Несколько устройств под одним названием" />
+                        </StackPanel>
+                    </Expander.Header>
+                <StackPanel Spacing="12">
                     <TextBlock Style="{StaticResource Hint}" Text="Несколько устройств под одним названием — одна плитка и одна команда: «Хоуми, выключи люстру». Группа встаёт в комнату своих устройств, сами устройства прячутся внутрь неё." />
                     <StackPanel x:Name="GroupList" Spacing="6" />
 
@@ -173,6 +186,7 @@
                         Foreground="#EF4444"
                         TextWrapping="Wrap" />
                 </StackPanel>
+                </Expander>
 
                 <!-- ===== Голос ===== -->
                 <Expander Style="{StaticResource CardExpander}">
