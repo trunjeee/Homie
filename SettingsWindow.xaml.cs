@@ -30,12 +30,14 @@ public sealed partial class SettingsWindow : Window
     private readonly VoiceService _voice;
     private readonly Func<Task<string?>> _applyVoice;
     private readonly ReplyPlayer _replies;
+    private readonly AliceRelay _relay;
+    private readonly Action _applyRelay;
     private uint _capturedModifiers, _capturedKey;
     private bool _loadingVoice;
     private CancellationTokenSource? _download;
 
     public SettingsWindow(AppSettings settings, HomeViewModel home, Func<IReadOnlyList<HotkeyBinding>> applyHotkeys,
-        VoiceService voice, Func<Task<string?>> applyVoice, ReplyPlayer replies)
+        VoiceService voice, Func<Task<string?>> applyVoice, ReplyPlayer replies, AliceRelay relay, Action applyRelay)
     {
         _settings = settings;
         _home = home;
@@ -43,6 +45,8 @@ public sealed partial class SettingsWindow : Window
         _voice = voice;
         _applyVoice = applyVoice;
         _replies = replies;
+        _relay = relay;
+        _applyRelay = applyRelay;
         InitializeComponent();
 
         ExtendsContentIntoTitleBar = true;
@@ -258,6 +262,7 @@ public sealed partial class SettingsWindow : Window
         BuildShortcuts();
         BuildReplies();
         LoadAi();
+        LoadRelay();
 
         // Что слышит микрофон в режиме ожидания — чтобы подобрать варианты «Хоуми».
         Action<string> heard = text => HeardText.Text = $"Услышал: «{text}»";
@@ -599,6 +604,93 @@ public sealed partial class SettingsWindow : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, label);
         Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(b, label);
         return b;
+    }
+
+    // ---------- сообщения от Алисы ----------
+
+    private void LoadRelay()
+    {
+        _loadingVoice = true;
+        RelayToggle.IsOn = _settings.AliceRelayEnabled;
+        _loadingVoice = false;
+        // Ключ создаётся сразу — его нужно вписать в навык ещё до включения.
+        var key = SettingsStore.LoadRelayKey();
+        if (key is null)
+        {
+            key = AliceRelay.NewKey();
+            SettingsStore.SaveRelayKey(key);
+        }
+        RelayKeyBox.Text = key;
+        UpdateRelayStatus(_relay.IsConnected);
+        Action<bool> onChanged = UpdateRelayStatus;
+        _relay.ConnectedChanged += onChanged;
+        Closed += (_, _) => _relay.ConnectedChanged -= onChanged;
+    }
+
+    private void UpdateRelayStatus(bool connected)
+    {
+        RelayHeaderStatus.Text = !_settings.AliceRelayEnabled ? "Выключено — «Алиса, попроси Хоуми передать: …», и этот ПК скажет это голосом"
+            : connected ? "✓ Включено, слушаю сообщения от навыка" : "Включено, подключаюсь к каналу…";
+        RelayStatus.Text = !_settings.AliceRelayEnabled ? "Выключено"
+            : connected ? "✓ Слушаю сообщения от навыка" : "Подключаюсь к каналу…";
+        RelayTestButton.IsEnabled = _settings.AliceRelayEnabled && connected;
+    }
+
+    private void RelayToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_loadingVoice) return;
+        _settings.AliceRelayEnabled = RelayToggle.IsOn;
+        SettingsStore.Save(_settings);
+        _applyRelay();
+        UpdateRelayStatus(_relay.IsConnected);
+    }
+
+    private void CopyRelayKey_Click(object sender, RoutedEventArgs e)
+    {
+        var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        data.SetText(RelayKeyBox.Text);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+        RelayStatus.Text = "Ключ скопирован — вставь его в навык как HOMIE_KEY";
+    }
+
+    private void NewRelayKey_Click(object sender, RoutedEventArgs e)
+    {
+        var key = AliceRelay.NewKey();
+        SettingsStore.SaveRelayKey(key);
+        RelayKeyBox.Text = key;
+        _applyRelay();
+        RelayStatus.Text = "Новый ключ — не забудь обновить HOMIE_KEY в навыке";
+    }
+
+    /// <summary>Код навыка для Yandex Cloud — встроен в Homie, в код программы лезть не нужно.</summary>
+    private void CopySkillCode_Click(object sender, RoutedEventArgs e)
+    {
+        using var stream = typeof(SettingsWindow).Assembly.GetManifestResourceStream("alice-skill/index.py");
+        if (stream is null) { RelayStatus.Text = "Код навыка не найден в сборке"; return; }
+        using var reader = new StreamReader(stream);
+        var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        data.SetText(reader.ReadToEnd());
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+        RelayStatus.Text = "Код навыка скопирован — вставь его в index.py функции";
+    }
+
+    /// <summary>Отправить себе подписанное сообщение тем же каналом, что и навык.</summary>
+    private async void RelayTest_Click(object sender, RoutedEventArgs e)
+    {
+        RelayTestButton.IsEnabled = false;
+        try
+        {
+            await _relay.SendTestAsync("проверка связи с Алисой");
+            RelayStatus.Text = "Отправила — сейчас должна прозвучать проверка";
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            RelayStatus.Text = "Не получилось отправить: " + ex.Message;
+        }
+        finally
+        {
+            RelayTestButton.IsEnabled = _relay.IsConnected;
+        }
     }
 
     // ---------- нейросеть ----------

@@ -95,6 +95,9 @@ public sealed class AppSettings
     public bool AiSpeak { get; set; } = true;
     public string AiVoice { get; set; } = EdgeVoice.Svetlana;
 
+    /// <summary>Принимать сообщения от Алисы через свой навык «Хоуми».</summary>
+    public bool AliceRelayEnabled { get; set; }
+
     /// <summary>Стандартные ответы — записи, которые идут вместе с Homie (Assets\Sounds).</summary>
     public static Dictionary<ReplyEvent, List<string>> DefaultReplySounds()
     {
@@ -182,6 +185,11 @@ public static class SettingsStore
     public static string? LoadAiKey() => LoadSecret(AiKeyFile);
     public static void SaveAiKey(string key) => SaveSecret(AiKeyFile, key);
     public static void DeleteAiKey() => DeleteSecret(AiKeyFile);
+
+    // «Ключ связи» с навыком Алисы — тоже только на этом ПК.
+    private static readonly string RelayKeyFile = Path.Combine(Dir, "alice.bin");
+    public static string? LoadRelayKey() => LoadSecret(RelayKeyFile);
+    public static void SaveRelayKey(string key) => SaveSecret(RelayKeyFile, key);
 
     private static string? LoadSecret(string file)
     {

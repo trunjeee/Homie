@@ -94,6 +94,11 @@ public sealed partial class HostWindow : Window
         _pttWatch.Tick += (_, _) => WatchVoiceKey();
         _ = ApplyVoiceAsync();
 
+        // Сообщения от Алисы через свой навык «Хоуми».
+        _relay = new AliceRelay(DispatcherQueue);
+        _relay.MessageReceived += OnAliceMessage;
+        ApplyRelay();
+
         // Первый запуск без подключения — сразу открываем настройки.
         if (SettingsStore.LoadToken() is null) OpenSettings();
     }
@@ -122,7 +127,7 @@ public sealed partial class HostWindow : Window
             _settingsWindow.Activate();
             return;
         }
-        _settingsWindow = new SettingsWindow(_settings, _home, ApplyHotkeys, _voice, ApplyVoiceAsync, _replies);
+        _settingsWindow = new SettingsWindow(_settings, _home, ApplyHotkeys, _voice, ApplyVoiceAsync, _replies, _relay, ApplyRelay);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Activate();
     }
@@ -295,6 +300,37 @@ public sealed partial class HostWindow : Window
     }
 
     private readonly AiService _ai = new();
+    private readonly AliceRelay _relay;
+
+    /// <summary>Включить/выключить приём сообщений от Алисы по настройкам.</summary>
+    private void ApplyRelay()
+    {
+        if (_settings.AliceRelayEnabled && SettingsStore.LoadRelayKey() is { } key) _relay.Start(key);
+        else _relay.Stop();
+    }
+
+    /// <summary>«Алиса, попроси Хоуми передать на балкон: …» — показываем и говорим голосом.</summary>
+    private async void OnAliceMessage(string text)
+    {
+        var window = VoiceUi();
+        window.HideNow(); // сброс прошлого показа (размер, озвучка)
+        window.ShowAnswer("Сообщение через Алису", text);
+        int session = window.Session;
+
+        if (_settings.VoiceReplies)
+        {
+            try
+            {
+                var speech = await EdgeVoice.SynthesizeAsync("Тебе передали: " + text, _settings.AiVoice);
+                if (window.IsActive(session)) await _replies.PlayMp3AndWaitAsync(speech);
+            }
+            catch (Exception ex) when (ex is IOException or System.Net.WebSockets.WebSocketException or OperationCanceledException or HttpRequestException)
+            {
+                _replies.Play(ReplyEvent.Wake); // без интернета голоса нет — хотя бы короткий звук
+            }
+        }
+        if (window.IsActive(session)) window.HideAfterAnswer(Math.Max(6, text.Length * 0.09));
+    }
 
     private async Task AskAiAsync(string question)
     {
@@ -426,6 +462,7 @@ public sealed partial class HostWindow : Window
         _voice.Dispose();
         _replies.Dispose();
         _ai.Dispose();
+        _relay.Dispose();
         _voiceWindow?.Close();
         _tray.Dispose();
         _home.Dispose();

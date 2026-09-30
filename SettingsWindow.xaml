@@ -383,6 +383,129 @@
                         TextWrapping="Wrap" />
                 </StackPanel>
 
+                <!-- ===== Сообщения от Алисы (свёрнуто, чтобы не удлинять настройки) ===== -->
+                <Expander
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    Background="#0DFFFFFF"
+                    BorderBrush="#14FFFFFF"
+                    CornerRadius="14">
+                    <Expander.Header>
+                        <StackPanel Padding="4,12" Spacing="2">
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Сообщения от Алисы" />
+                            <TextBlock
+                                x:Name="RelayHeaderStatus"
+                                Style="{StaticResource Hint}"
+                                Text="«Алиса, попроси Хоуми передать: ужин готов» — и этот ПК скажет это голосом" />
+                        </StackPanel>
+                    </Expander.Header>
+
+                    <StackPanel Spacing="12">
+                        <Grid>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="13"
+                                Text="Принимать сообщения" />
+                            <ToggleSwitch
+                                x:Name="RelayToggle"
+                                MinWidth="0"
+                                HorizontalAlignment="Right"
+                                OffContent=""
+                                OnContent=""
+                                Toggled="RelayToggle_Toggled" />
+                        </Grid>
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="RelayKeyBox"
+                                FontFamily="Consolas"
+                                Header="Ключ связи"
+                                IsReadOnly="True" />
+                            <Button
+                                Grid.Column="1"
+                                Height="32"
+                                VerticalAlignment="Bottom"
+                                Click="CopyRelayKey_Click"
+                                CornerRadius="10"
+                                Content="Скопировать" />
+                            <Button
+                                Grid.Column="2"
+                                Height="32"
+                                VerticalAlignment="Bottom"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Click="NewRelayKey_Click"
+                                CornerRadius="10"
+                                Content="Новый ключ" />
+                        </Grid>
+
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                x:Name="RelayStatus"
+                                VerticalAlignment="Center"
+                                FontSize="13"
+                                TextWrapping="Wrap" />
+                            <Button
+                                Grid.Column="1"
+                                Click="CopySkillCode_Click"
+                                CornerRadius="10"
+                                Content="Скопировать код навыка" />
+                            <Button
+                                x:Name="RelayTestButton"
+                                Grid.Column="2"
+                                Click="RelayTest_Click"
+                                CornerRadius="10"
+                                Content="Проверить" />
+                        </Grid>
+
+                        <!-- Инструкция — тоже свёрнута -->
+                        <Expander
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Header="Как настроить навык (один раз, минут 10)">
+                            <TextBlock
+                                FontSize="13"
+                                LineHeight="21"
+                                TextWrapping="Wrap">
+                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="1. Создай навык." />
+                                <Run Text="Открой" />
+                                <Hyperlink NavigateUri="https://dialogs.yandex.ru/developer">dialogs.yandex.ru/developer</Hyperlink>
+                                <Run Text="(вход тем же Яндекс ID, что на колонках) → «Создать диалог» → «Навык»." />
+                                <LineBreak />
+                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="2. Имя." />
+                                <Run Text="«Название» и «Активационное имя» — любое, по нему будешь звать навык, например «Хоуми». Доступ — «Приватный» (навык увидишь только ты)." />
+                                <LineBreak />
+                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="3. Функция." />
+                                <Run Text="В «Backend» выбери «Функция в Yandex Cloud» → «Создать функцию». Откроется Яндекс Облако: при первом входе оно попросит завести платёжный аккаунт — вызовы от навыков Алисы бесплатны." />
+                                <LineBreak />
+                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="4. Код." />
+                                <Run Text="В функции «Создать версию»: среда Python 3.12, «Редактор кода» → файл index.py → удали пример и вставь код кнопкой «Скопировать код навыка». Точка входа: index.handler, таймаут 5 секунд." />
+                                <LineBreak />
+                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="5. Ключ." />
+                                <Run Text="Там же, в «Переменные окружения»: имя HOMIE_KEY, значение — «Ключ связи» (кнопка «Скопировать»). Нажми «Сохранить изменения»." />
+                                <LineBreak />
+                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="6. Публикация." />
+                                <Run Text="Вернись в навык, выбери созданную функцию, сохрани и нажми «Опубликовать» (приватные навыки проверяются быстро)." />
+                                <LineBreak />
+                                <Run FontFamily="{StaticResource AppFontSemiBold}" Text="7. Готово." />
+                                <Run Text="Включи «Принимать сообщения», нажми «Проверить» — ПК скажет «проверка связи». Потом колонке: «Алиса, попроси Хоуми передать: привет»." />
+                            </TextBlock>
+                        </Expander>
+                    </StackPanel>
+                </Expander>
+
                 <!-- ===== Горячие клавиши ===== -->
                 <StackPanel Style="{StaticResource Card}">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Горячие клавиши" />
