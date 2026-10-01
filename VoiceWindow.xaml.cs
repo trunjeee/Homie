@@ -174,6 +174,7 @@ public sealed partial class VoiceWindow : Window
     {
         _hide.Stop();
         _listening = false;
+        if (_tall || _alarm) HideNow(); // после ответа нейросети или будильника — обычный размер
         RecDot.Visibility = Visibility.Collapsed;
         StatusText.Text = title;
         SpeechText.Text = text;
