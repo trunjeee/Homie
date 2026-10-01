@@ -271,6 +271,56 @@
                 </StackPanel>
                 </Expander>
 
+                <!-- ===== Таймеры и напоминания ===== -->
+                <Expander Style="{StaticResource CardExpander}">
+                    <Expander.Header>
+                        <StackPanel Style="{StaticResource ExpanderHeader}">
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Таймеры и напоминания" />
+                            <TextBlock x:Name="TimersHeaderStatus" Style="{StaticResource Hint}" />
+                        </StackPanel>
+                    </Expander.Header>
+                <StackPanel Spacing="12">
+                    <TextBlock Style="{StaticResource Hint}" Text="«Хоуми, таймер на 10 минут», «напомни через полчаса проверить духовку», «напомни завтра в 9 про встречу», «напомни по будням в 8 сделать зарядку», «сколько осталось?», «какие напоминания?», «отмени таймер». Когда сработает — «Хоуми, стоп» или «Хоуми, отложи»." />
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center" Spacing="1">
+                            <TextBlock FontSize="13" Text="Сигнал" />
+                            <TextBlock x:Name="AlarmSoundName" Style="{StaticResource Hint}" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Click="PlayAlarm_Click" CornerRadius="10" Content="▶" />
+                        <Button Grid.Column="2" Click="PickAlarm_Click" CornerRadius="10" Content="Выбрать…" />
+                        <Button
+                            Grid.Column="3"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="ResetAlarm_Click"
+                            CornerRadius="10"
+                            Content="Стандартный" />
+                    </Grid>
+                    <TextBlock Style="{StaticResource Hint}" Text="Перед словами звучит сигнал, потом запись «Напоминание» (добавь её в «Ответы голосом» → «Таймер или напоминание сработало»), потом — о чём напоминание." />
+
+                    <ComboBox
+                        x:Name="SnoozeBox"
+                        MinWidth="200"
+                        Header="«Отложить» на"
+                        SelectionChanged="SnoozeBox_SelectionChanged">
+                        <x:String>5 минут</x:String>
+                        <x:String>10 минут</x:String>
+                        <x:String>15 минут</x:String>
+                        <x:String>30 минут</x:String>
+                    </ComboBox>
+
+                    <TextBlock FontSize="13" Text="Сейчас стоят" />
+                    <StackPanel x:Name="TimerSettingsList" Spacing="6" />
+                </StackPanel>
+                </Expander>
+
                 <!-- ===== Свои голосовые команды ===== -->
                 <Expander Style="{StaticResource CardExpander}">
                     <Expander.Header>

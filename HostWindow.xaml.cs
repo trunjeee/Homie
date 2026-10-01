@@ -58,7 +58,8 @@ public sealed partial class HostWindow : Window
             SettingsStore.Save(_settings);
         }
         _replies = new ReplyPlayer(_settings);
-        _replies.PlayingChanged += playing => _voice.Suppress(playing);
+        // Пока звонит будильник, микрофон не глушим — чтобы было слышно «Хоуми, стоп».
+        _replies.PlayingChanged += playing => _voice.Suppress(playing && _ringing is null);
 
         // Сказал «Хоуми» и молчишь 3 секунды — тогда отвечаем «Слушаю», иначе не перебиваем.
         _wakeReplyTimer = DispatcherQueue.CreateTimer();
@@ -99,6 +100,11 @@ public sealed partial class HostWindow : Window
         _relay.MessageReceived += OnAliceMessage;
         ApplyRelay();
 
+        // Таймеры и напоминания.
+        _timers = new TimerService(DispatcherQueue);
+        _timers.Fired += (entry, missed) => _ = RingAsync(entry, missed);
+        InitNotifications();
+
         // Обновления: первая проверка через минуту после запуска, дальше раз в 6 часов.
         _updateTimer = DispatcherQueue.CreateTimer();
         _updateTimer.Interval = TimeSpan.FromMinutes(1);
@@ -121,7 +127,7 @@ public sealed partial class HostWindow : Window
         // Клик по иконке сначала закрывает панель (она теряет фокус), не открываем её тут же снова.
         if (DateTime.Now - _flyoutClosedAt < TimeSpan.FromMilliseconds(300)) return;
 
-        _flyout = new FlyoutWindow(_home, OpenSettings);
+        _flyout = new FlyoutWindow(_home, OpenSettings, _timers);
         _flyout.Closed += (_, _) => { _flyout = null; _flyoutClosedAt = DateTime.Now; };
         _flyout.Activate();
     }
@@ -133,7 +139,7 @@ public sealed partial class HostWindow : Window
             _settingsWindow.Activate();
             return;
         }
-        _settingsWindow = new SettingsWindow(_settings, _home, ApplyHotkeys, _voice, ApplyVoiceAsync, _replies, _relay, ApplyRelay);
+        _settingsWindow = new SettingsWindow(_settings, _home, ApplyHotkeys, _voice, ApplyVoiceAsync, _replies, _relay, ApplyRelay, _timers);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Activate();
     }
@@ -214,6 +220,7 @@ public sealed partial class HostWindow : Window
             _voiceWindow.Dismissed += () =>
             {
                 _voice.CancelListening(silent: true);
+                StopRinging(); // клик по окошку — «стоп» для будильника
                 _replies.Stop();
                 CancelCountdown();
             };
@@ -267,6 +274,9 @@ public sealed partial class HostWindow : Window
     {
         var window = VoiceUi();
 
+        // Таймеры и напоминания: звонит — «стоп» / «отложи»; иначе «таймер на…», «напомни…», «сколько осталось».
+        if (await HandleTimerCommandAsync(text, window)) return;
+
         // «Хоуми, отмена» во время отсчёта выключения.
         if (_pending is not null && VoiceCommands.Normalize(text).Split(' ').Any(w => w.StartsWith("отмен") || w is "стоп" or "нет" or "стой"))
         {
@@ -308,6 +318,229 @@ public sealed partial class HostWindow : Window
         }
         if (reply is { } r) _replies.Play(r);
         window.ShowResult(ok, answer);
+    }
+
+    // ---------- таймеры и напоминания ----------
+
+    private readonly TimerService _timers;
+    private TimerEntry? _ringing;
+    public TimerService Timers => _timers;
+
+    private static readonly string[] StopWords = ["стоп", "хватит", "выключи", "выключить", "готово", "отключи", "тихо", "спасибо", "ок", "окей", "понял", "поняла", "достаточно"];
+
+    /// <summary>Голосовые команды таймеров. true — фраза была про них и обработана.</summary>
+    private async Task<bool> HandleTimerCommandAsync(string text, VoiceWindow window)
+    {
+        var words = VoiceCommands.Normalize(text).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        // Звонит будильник: «стоп» — замолчать, «отложи (на 10 минут)» — отложить.
+        if (_ringing is { } ringing)
+        {
+            if (words.Any(w => w.StartsWith("отлож")))
+            {
+                int minutes = words.Select(w => int.TryParse(w, out int n) ? n : 0).FirstOrDefault(n => n > 0);
+                minutes = minutes > 0 ? minutes : _settings.SnoozeMinutes;
+                StopRinging();
+                _timers.Snooze(ringing, minutes);
+                window.ShowResult(true, $"Отложила на {TimerText.Duration(TimeSpan.FromMinutes(minutes))}");
+                _replies.Play(ReplyEvent.Done);
+                return true;
+            }
+            if (words.Any(w => StopWords.Contains(w)))
+            {
+                StopRinging();
+                window.HideNow();
+                return true;
+            }
+        }
+
+        var intent = TimerCommands.Parse(text, DateTime.Now);
+        if (intent is null) return false;
+        TimerKind? kind = words.Any(w => w.StartsWith("напомин") || w == "напомни") ? TimerKind.Reminder
+            : words.Any(w => w.StartsWith("таймер")) ? TimerKind.Timer : null;
+
+        if (intent.Error is not null)
+        {
+            window.ShowResult(false, intent.Error);
+            _replies.Play(ReplyEvent.NotUnderstood);
+            return true;
+        }
+
+        switch (intent.Action)
+        {
+            case TimerAction.SetTimer or TimerAction.SetReminder when intent.Entry is { } entry:
+                _timers.Add(entry);
+                string what = entry.Label.Length > 0 ? $" · {entry.Label}" : "";
+                window.ShowResult(true, entry.Kind == TimerKind.Timer
+                    ? $"Таймер на {TimerText.Duration(TimeSpan.FromSeconds(entry.DurationSeconds))} — до {entry.Due:H:mm}{what}"
+                    : $"Напомню {TimerText.When(entry, DateTime.Now)}{what}");
+                _replies.Play(ReplyEvent.Done);
+                return true;
+
+            case TimerAction.Remaining:
+            {
+                var next = _timers.Find("", TimerKind.Timer) ?? _timers.Find("", null);
+                string answer = next is null ? "Таймеров нет"
+                    : $"{(next.Label.Length > 0 ? next.Label + ": " : "")}осталось {TimerText.Duration(next.Due - DateTime.Now)}";
+                window.ShowResult(next is not null, answer);
+                await SayAsync(answer);
+                return true;
+            }
+
+            case TimerAction.List:
+            {
+                var items = _timers.Items.Where(t => kind is null || t.Kind == kind).ToList();
+                if (items.Count == 0)
+                {
+                    window.ShowResult(true, kind == TimerKind.Reminder ? "Напоминаний нет" : "Таймеров нет");
+                    await SayAsync(kind == TimerKind.Reminder ? "Напоминаний нет" : "Таймеров нет");
+                    return true;
+                }
+                var now = DateTime.Now;
+                var lines = items.Take(4).Select(t => t.Kind == TimerKind.Timer
+                    ? $"{(t.Label.Length > 0 ? t.Label : "таймер")} — через {TimerText.Duration(t.Due - now)}"
+                    : $"{(t.Label.Length > 0 ? t.Label : "напоминание")} — {TimerText.When(t, now)}");
+                string list = string.Join("; ", lines) + (items.Count > 4 ? $" и ещё {items.Count - 4}" : "");
+                window.ShowResult(true, list);
+                await SayAsync(list);
+                return true;
+            }
+
+            case TimerAction.Cancel:
+            {
+                var found = _timers.Find(intent.Query, kind);
+                if (found is null)
+                {
+                    window.ShowResult(false, intent.Query.Length > 0 ? $"Не нашла: {intent.Query}" : "Отменять нечего");
+                    _replies.Play(ReplyEvent.Failed);
+                    return true;
+                }
+                _timers.Remove(found.Id);
+                window.ShowResult(true, $"Отменила {(found.Kind == TimerKind.Timer ? "таймер" : "напоминание")}{(found.Label.Length > 0 ? " · " + found.Label : "")}");
+                _replies.Play(ReplyEvent.Cancelled);
+                return true;
+            }
+
+            case TimerAction.CancelAll:
+                _timers.RemoveAll(kind);
+                window.ShowResult(true, kind == TimerKind.Reminder ? "Все напоминания отменены" : kind == TimerKind.Timer ? "Все таймеры отменены" : "Всё отменено");
+                _replies.Play(ReplyEvent.Cancelled);
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Сработало: колокольчик → «Напоминание» (своя запись) → голосом, о чём; по кругу, пока не остановят
+    /// («Хоуми, стоп», клик по окошку, «Готово» в уведомлении) — но не дольше трёх кругов.
+    /// </summary>
+    private async Task RingAsync(TimerEntry entry, bool missed)
+    {
+        StopRinging();
+        _ringing = entry;
+        string title = entry.Kind == TimerKind.Timer ? "Время вышло" : "Напоминание";
+        string about = entry.Label.Length > 0 ? entry.Label : entry.Kind == TimerKind.Timer
+            ? $"таймер на {TimerText.Duration(TimeSpan.FromSeconds(Math.Max(1, entry.DurationSeconds)))}" : "";
+        string shown = about + (missed ? $" (пропущено в {entry.Due:H:mm})" : "");
+
+        ShowAlarmNotification(entry, title, shown);
+        var window = VoiceUi();
+        window.HideNow();
+        window.ShowAnswer(title, shown.Length > 0 ? shown : title);
+        int session = window.Session;
+
+        string speech = entry.Kind == TimerKind.Timer
+            ? (entry.Label.Length > 0 ? $"Время вышло: {entry.Label}" : "Время вышло")
+            : (entry.Label.Length > 0 ? entry.Label : "Напоминание");
+        byte[]? voice = null;
+        try { voice = await EdgeVoice.SynthesizeAsync(speech, _settings.AiVoice); }
+        catch (Exception ex) when (ex is IOException or System.Net.WebSockets.WebSocketException or OperationCanceledException or HttpRequestException) { }
+
+        for (int round = 0; round < 3 && _ringing == entry; round++)
+        {
+            await _replies.PlayFileAndWaitAsync(_settings.AlarmSound);
+            if (_ringing != entry) break;
+            if (_replies.Pick(ReplyEvent.Reminder) is { } phrase) await _replies.PlayFileAndWaitAsync(phrase);
+            if (_ringing != entry) break;
+            if (voice is not null && (entry.Label.Length > 0 || _replies.Pick(ReplyEvent.Reminder) is null))
+                await _replies.PlayMp3AndWaitAsync(voice);
+            if (_ringing != entry) break;
+            await Task.Delay(TimeSpan.FromSeconds(4));
+        }
+        if (_ringing == entry) _ringing = null; // отзвенело — уведомление остаётся в Центре уведомлений
+        if (window.IsActive(session)) window.HideAfterAnswer(10);
+    }
+
+    private void StopRinging()
+    {
+        if (_ringing is null) return;
+        RemoveAlarmNotification(_ringing);
+        _ringing = null;
+        _replies.Stop();
+    }
+
+    private async Task SayAsync(string text)
+    {
+        if (!_settings.VoiceReplies) return;
+        try { await _replies.PlayMp3AndWaitAsync(await EdgeVoice.SynthesizeAsync(text, _settings.AiVoice)); }
+        catch (Exception ex) when (ex is IOException or System.Net.WebSockets.WebSocketException or OperationCanceledException or HttpRequestException) { }
+    }
+
+    // ---------- уведомления Windows с кнопками «Отложить» / «Готово» ----------
+
+    private readonly Dictionary<string, TimerEntry> _notified = [];
+
+    private void InitNotifications()
+    {
+        try
+        {
+            var manager = Microsoft.Windows.AppNotifications.AppNotificationManager.Default;
+            manager.NotificationInvoked += (_, args) => DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!args.Arguments.TryGetValue("id", out var id) || !_notified.TryGetValue(id, out var entry)) return;
+                bool wasRinging = _ringing?.Id == entry.Id;
+                StopRinging();
+                if (wasRinging) _voiceWindow?.HideNow();
+                if (args.Arguments.TryGetValue("action", out var action) && action == "snooze")
+                    _timers.Snooze(entry, _settings.SnoozeMinutes);
+                _notified.Remove(id);
+            });
+            manager.Register();
+        }
+        catch (Exception)
+        {
+            // без уведомлений Windows — останется окошко над треем и голос
+        }
+    }
+
+    private void ShowAlarmNotification(TimerEntry entry, string title, string text)
+    {
+        try
+        {
+            _notified[entry.Id] = entry;
+            var builder = new Microsoft.Windows.AppNotifications.Builder.AppNotificationBuilder()
+                .AddArgument("id", entry.Id)
+                .SetTag(entry.Id)
+                .SetScenario(Microsoft.Windows.AppNotifications.Builder.AppNotificationScenario.Reminder)
+                .MuteAudio() // звук — свой (колокольчик и голос)
+                .AddText($"⏰ {title}");
+            if (text.Length > 0) builder.AddText(text);
+            builder
+                .AddButton(new Microsoft.Windows.AppNotifications.Builder.AppNotificationButton($"Отложить на {_settings.SnoozeMinutes} мин")
+                    .AddArgument("id", entry.Id).AddArgument("action", "snooze"))
+                .AddButton(new Microsoft.Windows.AppNotifications.Builder.AppNotificationButton("Готово")
+                    .AddArgument("id", entry.Id).AddArgument("action", "done"));
+            Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Show(builder.BuildNotification());
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private void RemoveAlarmNotification(TimerEntry entry)
+    {
+        try { _ = Microsoft.Windows.AppNotifications.AppNotificationManager.Default.RemoveByTagAsync(entry.Id); }
+        catch (Exception) { }
     }
 
     private readonly UpdateService _updates = new();
@@ -489,6 +722,9 @@ public sealed partial class HostWindow : Window
         _relay.Dispose();
         _voiceWindow?.Close();
         _updateTimer.Stop();
+        _timers.Stop();
+        StopRinging();
+        try { Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Unregister(); } catch (Exception) { }
         _updates.ApplyOnExit(); // скачанное обновление встанет само к следующему запуску
         _tray.Dispose();
         _home.Dispose();

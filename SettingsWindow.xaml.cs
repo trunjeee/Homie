@@ -32,12 +32,13 @@ public sealed partial class SettingsWindow : Window
     private readonly ReplyPlayer _replies;
     private readonly AliceRelay _relay;
     private readonly Action _applyRelay;
+    private readonly TimerService _timers;
     private uint _capturedModifiers, _capturedKey;
     private bool _loadingVoice;
     private CancellationTokenSource? _download;
 
     public SettingsWindow(AppSettings settings, HomeViewModel home, Func<IReadOnlyList<HotkeyBinding>> applyHotkeys,
-        VoiceService voice, Func<Task<string?>> applyVoice, ReplyPlayer replies, AliceRelay relay, Action applyRelay)
+        VoiceService voice, Func<Task<string?>> applyVoice, ReplyPlayer replies, AliceRelay relay, Action applyRelay, TimerService timers)
     {
         _settings = settings;
         _home = home;
@@ -47,6 +48,7 @@ public sealed partial class SettingsWindow : Window
         _replies = replies;
         _relay = relay;
         _applyRelay = applyRelay;
+        _timers = timers;
         InitializeComponent();
 
         ExtendsContentIntoTitleBar = true;
@@ -158,7 +160,7 @@ public sealed partial class SettingsWindow : Window
         row.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         var text = new Microsoft.UI.Xaml.Controls.StackPanel { Spacing = 1 };
-        text.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = $"{name}  ·  {source}", FontSize = 13 });
+        text.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = source.Length > 0 ? $"{name}  ·  {source}" : name, FontSize = 13 });
         text.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = members, FontSize = 11, Opacity = 0.55, TextWrapping = TextWrapping.Wrap });
         row.Children.Add(text);
         if (remove is not null)
@@ -267,6 +269,7 @@ public sealed partial class SettingsWindow : Window
         BuildReplies();
         LoadAi();
         LoadRelay();
+        LoadTimers();
 
         // Что слышит микрофон в режиме ожидания — чтобы подобрать варианты «Хоуми».
         Action<string> heard = text => HeardText.Text = $"Услышал: «{text}»";
@@ -608,6 +611,69 @@ public sealed partial class SettingsWindow : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, label);
         Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(b, label);
         return b;
+    }
+
+    // ---------- таймеры и напоминания ----------
+
+    private static readonly int[] SnoozeOptions = [5, 10, 15, 30];
+
+    private void LoadTimers()
+    {
+        _loadingVoice = true;
+        SnoozeBox.SelectedIndex = Math.Max(0, Array.IndexOf(SnoozeOptions, _settings.SnoozeMinutes));
+        _loadingVoice = false;
+        AlarmSoundName.Text = ReplyPlayer.DisplayName(_settings.AlarmSound);
+        BuildTimerSettings();
+        Action changed = BuildTimerSettings;
+        _timers.Changed += changed;
+        Closed += (_, _) => _timers.Changed -= changed;
+    }
+
+    private void BuildTimerSettings()
+    {
+        var items = _timers.Items;
+        int timers = items.Count(t => t.Kind == TimerKind.Timer), reminders = items.Count - timers;
+        TimersHeaderStatus.Text = items.Count == 0 ? "Таймеры, напоминания и повторы по дням — голосом"
+            : $"Сейчас: таймеров — {timers}, напоминаний — {reminders}";
+
+        TimerSettingsList.Children.Clear();
+        if (items.Count == 0)
+        {
+            TimerSettingsList.Children.Add(new Microsoft.UI.Xaml.Controls.TextBlock { Text = "Ничего не стоит", FontSize = 12, Opacity = 0.6 });
+            return;
+        }
+        var now = DateTime.Now;
+        foreach (var t in items)
+        {
+            string title = t.Label.Length > 0 ? t.Label : t.Kind == TimerKind.Timer ? "Таймер" : "Напоминание";
+            string when = t.Kind == TimerKind.Timer ? $"таймер · до {t.Due:H:mm}" : TimerText.When(t, now);
+            TimerSettingsList.Children.Add(GroupRow(char.ToUpper(title[0]) + title[1..], when, t.IsRecurring ? "повтор" : "", () => _timers.Remove(t.Id)));
+        }
+    }
+
+    private void PlayAlarm_Click(object sender, RoutedEventArgs e) => _replies.PlayFile(_settings.AlarmSound, force: true);
+
+    private async void PickAlarm_Click(object sender, RoutedEventArgs e)
+    {
+        var picked = await PickSoundsAsync();
+        if (picked.Count == 0) return;
+        try { _settings.AlarmSound = ReplyPlayer.Import(picked[0]); } catch (IOException) { return; }
+        SettingsStore.Save(_settings);
+        AlarmSoundName.Text = ReplyPlayer.DisplayName(_settings.AlarmSound);
+    }
+
+    private void ResetAlarm_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.AlarmSound = ReplyPlayer.BuiltIn + "Колокольчик.wav";
+        SettingsStore.Save(_settings);
+        AlarmSoundName.Text = ReplyPlayer.DisplayName(_settings.AlarmSound);
+    }
+
+    private void SnoozeBox_SelectionChanged(object sender, Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs e)
+    {
+        if (_loadingVoice || SnoozeBox.SelectedIndex < 0) return;
+        _settings.SnoozeMinutes = SnoozeOptions[SnoozeBox.SelectedIndex];
+        SettingsStore.Save(_settings);
     }
 
     // ---------- сообщения от Алисы ----------

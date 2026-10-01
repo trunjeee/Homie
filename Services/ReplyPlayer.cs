@@ -61,6 +61,7 @@ public sealed class ReplyPlayer : IDisposable
         ReplyEvent.Failed => "Не получилось",
         ReplyEvent.Countdown => "Выключение через 5 секунд",
         ReplyEvent.Cancelled => "Отменено",
+        ReplyEvent.Reminder => "Таймер или напоминание сработало",
         _ => e.ToString(),
     };
 
@@ -77,6 +78,7 @@ public sealed class ReplyPlayer : IDisposable
         ReplyEvent.Failed => "«Не получилось, устройство не отвечает»",
         ReplyEvent.Countdown => "«Выключаю компьютер через пять секунд»",
         ReplyEvent.Cancelled => "«Отменила»",
+        ReplyEvent.Reminder => "«Напоминание», «Время вышло»",
         _ => "",
     };
 
@@ -117,6 +119,24 @@ public sealed class ReplyPlayer : IDisposable
     {
         PlayingChanged?.Invoke(false);
         _done?.TrySetResult();
+    }
+
+    /// <summary>Проиграть файл и дождаться конца (будильник таймера звучит всегда, даже если ответы выключены).</summary>
+    public async Task PlayFileAndWaitAsync(string path)
+    {
+        if (!Exists(path)) return;
+        _done?.TrySetResult();
+        var done = _done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!PlayFile(path, force: true)) return;
+        await Task.WhenAny(done.Task, Task.Delay(TimeSpan.FromSeconds(30)));
+    }
+
+    /// <summary>Случайный файл события — для будильника таймера.</summary>
+    public string? Pick(ReplyEvent e)
+    {
+        if (!_settings.ReplySounds.TryGetValue(e, out var files)) return null;
+        var existing = files.Where(Exists).ToList();
+        return existing.Count == 0 ? null : existing[_random.Next(existing.Count)];
     }
 
     /// <summary>Озвучить mp3 и дождаться конца — для ответа нейросети по предложениям.</summary>

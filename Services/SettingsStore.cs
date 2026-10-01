@@ -44,7 +44,7 @@ public sealed class LocalGroup
 }
 
 /// <summary>Когда Homie отвечает голосом (заранее записанные файлы).</summary>
-public enum ReplyEvent { Wake, On, Off, Done, Scenario, App, NotUnderstood, NotHeard, Failed, Countdown, Cancelled }
+public enum ReplyEvent { Wake, On, Off, Done, Scenario, App, NotUnderstood, NotHeard, Failed, Countdown, Cancelled, Reminder }
 
 public sealed class AppSettings
 {
@@ -97,6 +97,11 @@ public sealed class AppSettings
 
     /// <summary>Принимать сообщения от Алисы через свой навык «Хоуми».</summary>
     public bool AliceRelayEnabled { get; set; }
+
+    /// <summary>Сигнал будильника таймеров и напоминаний (по умолчанию — колокольчик из комплекта).</summary>
+    public string AlarmSound { get; set; } = ReplyPlayer.BuiltIn + "Колокольчик.wav";
+    /// <summary>На сколько минут «Отложить».</summary>
+    public int SnoozeMinutes { get; set; } = 5;
 
     /// <summary>Стандартные ответы — записи, которые идут вместе с Homie (Assets\Sounds).</summary>
     public static Dictionary<ReplyEvent, List<string>> DefaultReplySounds()

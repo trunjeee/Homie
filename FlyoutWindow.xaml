@@ -313,6 +313,12 @@
                     TextWrapping="Wrap"
                     Visibility="{x:Bind HasText(Home.ErrorText), Mode=OneWay}" />
 
+                <!-- Таймеры и напоминания (строится в коде, обратный отсчёт раз в секунду) -->
+                <StackPanel x:Name="TimersSection" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Таймеры и напоминания" />
+                    <StackPanel x:Name="TimersList" Spacing="6" />
+                </StackPanel>
+
                 <StackPanel Visibility="{x:Bind HasItems(Home.Scenarios.Count), Mode=OneWay}">
                     <TextBlock Style="{StaticResource SectionTitle}" Text="Сценарии" />
                     <!-- Ровно 3 сценария в ряд — ширина делится сама -->

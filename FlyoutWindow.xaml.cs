@@ -37,10 +37,14 @@ public sealed partial class FlyoutWindow : Window
 
     public HomeViewModel Home { get; }
 
-    public FlyoutWindow(HomeViewModel home, Action openSettings)
+    private readonly TimerService _timers;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _countdown;
+
+    public FlyoutWindow(HomeViewModel home, Action openSettings, TimerService timers)
     {
         Home = home;
         _openSettings = openSettings;
+        _timers = timers;
         InitializeComponent();
         Bindings.Update();
         _hwnd = WindowNative.GetWindowHandle(this);
@@ -91,14 +95,106 @@ public sealed partial class FlyoutWindow : Window
         _focusWatch.Tick += (_, _) => WatchFocus();
         _focusWatch.Start();
         Root.Loaded += (_, _) => Win32.SetForegroundWindow(_hwnd);
+        // Таймеры: список — при изменениях, обратный отсчёт — раз в секунду.
+        _timers.Changed += BuildTimers;
+        _countdown = DispatcherQueue.CreateTimer();
+        _countdown.Interval = TimeSpan.FromSeconds(1);
+        _countdown.Tick += (_, _) => UpdateCountdowns();
+        _countdown.Start();
+        BuildTimers();
+
         Closed += (_, _) =>
         {
             Home.PropertyChanged -= OnHomeChanged;
+            _timers.Changed -= BuildTimers;
+            _countdown.Stop();
             _refreshTimer.Stop();
             _focusWatch.Stop();
             Win32.RemoveWindowSubclass(_hwnd, _wndProc, 1);
         };
     }
+
+    // ---------- таймеры и напоминания ----------
+
+    private readonly List<(TimerEntry Entry, TextBlock Left)> _countdowns = [];
+
+    private void BuildTimers()
+    {
+        TimersList.Children.Clear();
+        _countdowns.Clear();
+        var items = _timers.Items;
+        TimersSection.Visibility = items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var now = DateTime.Now;
+
+        foreach (var t in items)
+        {
+            var row = new Grid
+            {
+                Padding = new Thickness(14, 8, 6, 8), ColumnSpacing = 8, CornerRadius = new CornerRadius(12),
+                Background = Res("GlassBrush"), BorderBrush = Res("GlassBorderBrush"), BorderThickness = new Thickness(1),
+            };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            row.Children.Add(new FontIcon
+            {
+                Glyph = t.Kind == TimerKind.Timer ? "" : t.IsRecurring ? "" : "", FontSize = 15,
+                VerticalAlignment = VerticalAlignment.Center, Opacity = 0.85,
+            });
+
+            var text = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(new TextBlock
+            {
+                Text = t.Label.Length > 0 ? Capitalize(t.Label) : t.Kind == TimerKind.Timer
+                    ? $"Таймер на {TimerText.Duration(TimeSpan.FromSeconds(t.DurationSeconds))}" : "Напоминание",
+                FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            var left = new TextBlock { FontSize = 12, Opacity = 0.6 };
+            text.Children.Add(left);
+            Grid.SetColumn(text, 1);
+            row.Children.Add(text);
+            _countdowns.Add((t, left));
+
+            if (t.Kind == TimerKind.Timer)
+            {
+                var plus = SmallButton("+5", "Ещё 5 минут", () => _timers.Extend(t.Id, 5));
+                Grid.SetColumn(plus, 2);
+                row.Children.Add(plus);
+            }
+            var cancel = SmallButton("", "Отменить", () => _timers.Remove(t.Id), glyph: true);
+            Grid.SetColumn(cancel, 3);
+            row.Children.Add(cancel);
+            TimersList.Children.Add(row);
+        }
+        UpdateCountdowns();
+    }
+
+    /// <summary>Таймер — «9:41», напоминание — «в 18:30» / «по будням в 8:00».</summary>
+    private void UpdateCountdowns()
+    {
+        var now = DateTime.Now;
+        foreach (var (t, left) in _countdowns)
+            left.Text = t.Kind == TimerKind.Timer ? TimerText.Countdown(t.Due - now) : TimerText.When(t, now);
+    }
+
+    private static Button SmallButton(string content, string label, Action click, bool glyph = false)
+    {
+        var b = new Button
+        {
+            MinWidth = 32, Height = 32, Padding = new Thickness(8, 0, 8, 0), CornerRadius = new CornerRadius(8),
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0),
+            Content = glyph ? new FontIcon { Glyph = content, FontSize = 11 } : new TextBlock { Text = content, FontSize = 12 },
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, label);
+        ToolTipService.SetToolTip(b, label);
+        b.Click += (_, _) => click();
+        return b;
+    }
+
+    private static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpper(s[0]) + s[1..];
 
     /// <summary>Правый нижний угол основного монитора, над панелью задач.</summary>
     private void PlaceAboveTray()
