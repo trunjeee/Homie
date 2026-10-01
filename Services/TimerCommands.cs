@@ -203,6 +203,14 @@ public static class TimerCommands
         static TimerIntent Done(TimerEntry e) => new(TimerAction.SetReminder) { Entry = e };
     }
 
+    /// <summary>Сколько минут названо во фразе («отложи на десять минут») или null.</summary>
+    public static int? Minutes(string text)
+    {
+        var w = VoiceCommands.Normalize(text).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var span = FindDuration(w, new bool[w.Length]);
+        return span is null ? null : Math.Max(1, (int)Math.Round(span.Value.TotalMinutes));
+    }
+
     /// <summary>«10 минут», «полчаса», «час двадцать», «полтора часа», «2 минуты 30 секунд», «минуту».</summary>
     private static TimeSpan? FindDuration(string[] w, bool[] used, int from = 0)
     {

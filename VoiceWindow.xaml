@@ -80,6 +80,27 @@
                 TextTrimming="CharacterEllipsis"
                 TextWrapping="Wrap"
                 Visibility="Collapsed" />
+            <!-- Во время будильника: отложить или выключить -->
+            <StackPanel
+                x:Name="AlarmButtons"
+                Margin="0,8,0,0"
+                Orientation="Horizontal"
+                Spacing="8"
+                Visibility="Collapsed">
+                <Button
+                    x:Name="SnoozeButton"
+                    Height="32"
+                    Click="Snooze_Click"
+                    Content="Отложить"
+                    CornerRadius="10" />
+                <Button
+                    Height="32"
+                    Click="AlarmDone_Click"
+                    CornerRadius="10"
+                    Style="{StaticResource AccentButtonStyle}">
+                    <TextBlock FontFamily="{StaticResource AppFontSemiBold}" Text="Готово" />
+                </Button>
+            </StackPanel>
         </StackPanel>
     </Grid>
 </Window>

@@ -24,7 +24,7 @@ public sealed partial class VoiceWindow : Window
     private readonly Win32.SUBCLASSPROC _wndProc;
     private readonly DispatcherQueueTimer _pulse;
     private readonly DispatcherQueueTimer _hide;
-    private bool _listening, _shown, _tall;
+    private bool _listening, _shown, _tall, _alarm;
     private float _level;
     private double _phase;
 
@@ -168,6 +168,35 @@ public sealed partial class VoiceWindow : Window
         ShowWindow();
     }
 
+    /// <summary>Будильник: «Отложить на N мин» и «Готово».</summary>
+    public event Action? SnoozeRequested;
+    public event Action? DoneRequested;
+
+    /// <summary>Сработал таймер или напоминание — окошко с кнопками, висит, пока не нажмут.</summary>
+    public void ShowAlarm(string title, string text, int snoozeMinutes)
+    {
+        HideNow();
+        ShowAnswer(title, text.Length > 0 ? text : title);
+        SetLook(Color.FromArgb(255, 0xFF, 0x9F, 0x0A), "", Colors.White);
+        SnoozeButton.Content = $"Отложить на {snoozeMinutes} мин";
+        AlarmButtons.Visibility = Visibility.Visible;
+        _shown = false; // выше — чтобы влезли кнопки
+        _alarm = true;
+        ShowWindow();
+    }
+
+    private void Snooze_Click(object sender, RoutedEventArgs e)
+    {
+        HideNow();
+        SnoozeRequested?.Invoke();
+    }
+
+    private void AlarmDone_Click(object sender, RoutedEventArgs e)
+    {
+        HideNow();
+        DoneRequested?.Invoke();
+    }
+
     /// <summary>Этот показ ещё на экране (не закрыли кликом и не начали новую команду).</summary>
     public bool IsActive(int session) => _shown && Session == session;
 
@@ -202,8 +231,10 @@ public sealed partial class VoiceWindow : Window
     /// <summary>После ответа нейросети — обратно в обычный размер.</summary>
     private void ResetSize()
     {
-        if (!_tall) return;
+        AlarmButtons.Visibility = Visibility.Collapsed;
+        if (!_tall && !_alarm) return;
         _tall = false;
+        _alarm = false;
         _shown = false;
         SpeechText.MaxLines = 2;
         SpeechText.FontSize = 17;
@@ -261,7 +292,7 @@ public sealed partial class VoiceWindow : Window
         var area = DisplayArea.Primary.WorkArea;
         AppWindow.Move(new PointInt32(area.X, area.Y)); // сначала на монитор, чтобы масштаб был его
         double scale = Win32.GetDpiForWindow(_hwnd) / 96d;
-        int gap = (int)(12 * scale), w = (int)(WidthDip * scale), h = (int)((_tall ? 190 : HeightDip) * scale);
+        int gap = (int)(12 * scale), w = (int)(WidthDip * scale), h = (int)((_alarm ? 210 : _tall ? 190 : HeightDip) * scale);
         AppWindow.MoveAndResize(new RectInt32(area.X + area.Width - w - gap, area.Y + area.Height - h - gap, w, h));
     }
 
@@ -273,6 +304,12 @@ public sealed partial class VoiceWindow : Window
     }
 
     private void Root_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (_alarm) return; // во время будильника — только кнопки «Отложить» / «Готово»
+        CloseByTap();
+    }
+
+    private void CloseByTap()
     {
         HideNow();
         Dismissed?.Invoke(); // отменить запись/отсчёт и остановить речь

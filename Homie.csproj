@@ -23,7 +23,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>preview</LangVersion>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <!-- Своя точка входа (Program.cs): сначала Velopack — установка, обновление, удаление -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <Product>Homie</Product>

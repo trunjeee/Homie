@@ -224,6 +224,13 @@ public sealed partial class HostWindow : Window
                 _replies.Stop();
                 CancelCountdown();
             };
+            _voiceWindow.DoneRequested += StopRinging;
+            _voiceWindow.SnoozeRequested += () =>
+            {
+                if ((_ringing ?? _lastAlarm) is not { } entry) return; // отзвенело, но окошко ещё висит — тоже можно отложить
+                StopRinging();
+                _timers.Snooze(entry, _settings.SnoozeMinutes);
+            };
         }
         return _voiceWindow;
     }
@@ -324,6 +331,7 @@ public sealed partial class HostWindow : Window
 
     private readonly TimerService _timers;
     private TimerEntry? _ringing;
+    private TimerEntry? _lastAlarm;
     public TimerService Timers => _timers;
 
     private static readonly string[] StopWords = ["стоп", "хватит", "выключи", "выключить", "готово", "отключи", "тихо", "спасибо", "ок", "окей", "понял", "поняла", "достаточно"];
@@ -338,7 +346,7 @@ public sealed partial class HostWindow : Window
         {
             if (words.Any(w => w.StartsWith("отлож")))
             {
-                int minutes = words.Select(w => int.TryParse(w, out int n) ? n : 0).FirstOrDefault(n => n > 0);
+                int minutes = TimerCommands.Minutes(text) ?? 0; // «отложи на десять минут»
                 minutes = minutes > 0 ? minutes : _settings.SnoozeMinutes;
                 StopRinging();
                 _timers.Snooze(ringing, minutes);
@@ -438,6 +446,7 @@ public sealed partial class HostWindow : Window
     {
         StopRinging();
         _ringing = entry;
+        _lastAlarm = entry;
         string title = entry.Kind == TimerKind.Timer ? "Время вышло" : "Напоминание";
         string about = entry.Label.Length > 0 ? entry.Label : entry.Kind == TimerKind.Timer
             ? $"таймер на {TimerText.Duration(TimeSpan.FromSeconds(Math.Max(1, entry.DurationSeconds)))}" : "";
@@ -445,8 +454,7 @@ public sealed partial class HostWindow : Window
 
         ShowAlarmNotification(entry, title, shown);
         var window = VoiceUi();
-        window.HideNow();
-        window.ShowAnswer(title, shown.Length > 0 ? shown : title);
+        window.ShowAlarm(title, shown, _settings.SnoozeMinutes); // с кнопками «Отложить» / «Готово»
         int session = window.Session;
 
         string speech = entry.Kind == TimerKind.Timer
@@ -505,11 +513,12 @@ public sealed partial class HostWindow : Window
                     _timers.Snooze(entry, _settings.SnoozeMinutes);
                 _notified.Remove(id);
             });
-            manager.Register();
+            // Без имени и значка Windows молча отбрасывает уведомления программы без установщика.
+            manager.Register("Homie", new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "home.png")));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // без уведомлений Windows — останется окошко над треем и голос
+            Log.Write("Уведомления: регистрация", ex); // останутся окошко над треем (с кнопками) и голос
         }
     }
 
@@ -530,10 +539,13 @@ public sealed partial class HostWindow : Window
                     .AddArgument("id", entry.Id).AddArgument("action", "snooze"))
                 .AddButton(new Microsoft.Windows.AppNotifications.Builder.AppNotificationButton("Готово")
                     .AddArgument("id", entry.Id).AddArgument("action", "done"));
-            Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Show(builder.BuildNotification());
+            var notification = builder.BuildNotification();
+            Microsoft.Windows.AppNotifications.AppNotificationManager.Default.Show(notification);
+            if (notification.Id == 0) Log.Write("Уведомления: Windows не показала уведомление (Id = 0)");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Log.Write("Уведомления: показ", ex);
         }
     }
 
