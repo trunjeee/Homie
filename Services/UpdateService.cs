@@ -25,21 +25,29 @@ public sealed class UpdateService
     /// <summary>Скачанная и готовая к установке версия (или null).</summary>
     public string? ReadyVersion => _ready?.TargetFullRelease.Version.ToString();
 
-    /// <summary>Проверить и скачать в фоне. Вернёт новую версию, если она только что скачалась.</summary>
-    public async Task<string?> CheckAndDownloadAsync()
+    public enum CheckResult { UpToDate, Downloaded, AlreadyReady, Failed, NotInstalled }
+
+    /// <summary>
+    /// Проверить и скачать в фоне. onFound вызывается, когда новая версия найдена и начинает качаться
+    /// (чтобы показать «Скачиваю 1.2.0…»).
+    /// </summary>
+    public async Task<CheckResult> CheckAndDownloadAsync(Action<string>? onFound = null)
     {
-        if (!IsInstalled || _ready is not null) return null;
+        if (!IsInstalled) return CheckResult.NotInstalled;
+        if (_ready is not null) return CheckResult.AlreadyReady;
         try
         {
             var info = await _manager.CheckForUpdatesAsync();
-            if (info is null) return null;
+            if (info is null) return CheckResult.UpToDate;
+            onFound?.Invoke(info.TargetFullRelease.Version.ToString());
             await _manager.DownloadUpdatesAsync(info);
             _ready = info;
-            return ReadyVersion;
+            return CheckResult.Downloaded;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return null; // нет интернета или GitHub недоступен — попробуем в следующий раз
+            Log.Write("Обновления: проверка", ex);
+            return CheckResult.Failed; // нет интернета или GitHub недоступен — попробуем в следующий раз
         }
     }
 

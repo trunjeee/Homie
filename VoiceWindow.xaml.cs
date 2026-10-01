@@ -169,6 +169,20 @@ public sealed partial class VoiceWindow : Window
         ShowWindow();
     }
 
+    /// <summary>Статус долгого действия без микрофона: «Проверяю обновления…».</summary>
+    public void ShowStatus(string title, string text)
+    {
+        _hide.Stop();
+        _listening = false;
+        RecDot.Visibility = Visibility.Collapsed;
+        StatusText.Text = title;
+        SpeechText.Text = text;
+        SpeechText.Opacity = 1;
+        ResultText.Visibility = Visibility.Collapsed;
+        SetLook(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF), "", Colors.White);
+        ShowWindow();
+    }
+
     /// <summary>Будильник: «Отложить на N мин» и «Готово».</summary>
     public event Action? SnoozeRequested;
     public event Action? DoneRequested;

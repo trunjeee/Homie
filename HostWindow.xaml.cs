@@ -558,14 +558,37 @@ public sealed partial class HostWindow : Window
     private readonly UpdateService _updates = new();
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _updateTimer;
 
-    /// <summary>Скачать новую версию в фоне и сказать об этом уведомлением.</summary>
+    /// <summary>
+    /// Скачать новую версию в фоне. По кнопке «Проверить обновления» — весь процесс в окошке Хоуми
+    /// («Проверяю…» → «Последняя версия» / «Скачиваю…» → «Готово»); фоновая проверка молчит, пока не найдёт.
+    /// </summary>
     private async Task CheckUpdatesAsync(bool manual)
     {
-        string? version = await _updates.CheckAndDownloadAsync();
-        if (version is not null)
-            _tray.ShowNotification("Homie", $"Готово обновление {version} — «Обновить» в меню трея или просто при следующем запуске");
-        else if (manual)
-            _tray.ShowNotification("Homie", _updates.ReadyVersion is null ? $"У тебя последняя версия — {_updates.CurrentVersion}" : $"Обновление {_updates.ReadyVersion} уже скачано");
+        VoiceWindow? window = manual ? VoiceUi() : null;
+        window?.ShowStatus("Обновления", "Проверяю обновления…");
+
+        var result = await _updates.CheckAndDownloadAsync(version => window?.ShowStatus("Обновления", $"Скачиваю Homie {version}…"));
+        string ready = _updates.ReadyVersion ?? "";
+        switch (result)
+        {
+            case UpdateService.CheckResult.Downloaded:
+                if (window is null)
+                    _tray.ShowNotification("Homie", $"Готово обновление {ready} — «Обновить» в меню трея или само при следующем запуске");
+                window?.ShowResult(true, $"Обновление {ready} готово — «⬆ Обновить» в меню трея или само при следующем запуске");
+                break;
+            case UpdateService.CheckResult.AlreadyReady:
+                window?.ShowResult(true, $"Обновление {ready} уже скачано — «⬆ Обновить» в меню трея");
+                break;
+            case UpdateService.CheckResult.UpToDate:
+                window?.ShowResult(true, $"У тебя последняя версия — {_updates.CurrentVersion}");
+                break;
+            case UpdateService.CheckResult.Failed:
+                window?.ShowResult(false, "Не удалось проверить — нет связи с GitHub. Попробую позже сама");
+                break;
+            case UpdateService.CheckResult.NotInstalled:
+                window?.ShowResult(false, "Это сборка без установщика — обновления только в установленной версии");
+                break;
+        }
     }
 
     private readonly AiService _ai = new();
