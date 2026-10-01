@@ -105,6 +105,7 @@ public sealed partial class VoiceWindow : Window
         if (!_listening || text.Length == 0) return;
         SpeechText.Text = Capitalize(text);
         SpeechText.Opacity = 1;
+        FitHeight(); // распознанная фраза стала в две строки
     }
 
     public void SetLevel(float level) => _level = Math.Max(_level, level);
@@ -154,7 +155,7 @@ public sealed partial class VoiceWindow : Window
     {
         _hide.Stop();
         SpeechText.Text = answer;
-        if (_tall) return; // уже показываем — только дописали текст
+        if (_tall) { FitHeight(); return; } // уже показываем — дописали текст, подгоняем высоту
         _listening = false;
         RecDot.Visibility = Visibility.Collapsed;
         StatusText.Text = Capitalize(question);
@@ -280,11 +281,30 @@ public sealed partial class VoiceWindow : Window
 
     private void ShowWindow()
     {
-        if (_shown) return;
+        if (_shown) { FitHeight(); return; } // уже на экране — только подогнать высоту под новый текст
         _shown = true;
         PlaceAboveTray();
         AppWindow.Show(false);
         Win32.SetWindowPos(_hwnd, -1 /* HWND_TOPMOST */, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
+    }
+
+    /// <summary>Высота по содержимому (в DIP): не меньше обычной, не больше трети экрана.</summary>
+    private double ContentHeight()
+    {
+        Root.Measure(new Windows.Foundation.Size(WidthDip, double.PositiveInfinity));
+        return Math.Clamp(Root.DesiredSize.Height, HeightDip, 420);
+    }
+
+    /// <summary>Текст вырос (ответ дописывается) — подтянуть окошко вверх, не двигая нижний край.</summary>
+    private void FitHeight()
+    {
+        if (!_shown) return;
+        double scale = Win32.GetDpiForWindow(_hwnd) / 96d;
+        int h = (int)Math.Ceiling(ContentHeight() * scale);
+        if (Math.Abs(h - AppWindow.Size.Height) < 2) return;
+        var area = DisplayArea.Primary.WorkArea;
+        int gap = (int)(12 * scale);
+        AppWindow.MoveAndResize(new RectInt32(AppWindow.Position.X, area.Y + area.Height - h - gap, AppWindow.Size.Width, h));
     }
 
     private void PlaceAboveTray()
@@ -292,7 +312,7 @@ public sealed partial class VoiceWindow : Window
         var area = DisplayArea.Primary.WorkArea;
         AppWindow.Move(new PointInt32(area.X, area.Y)); // сначала на монитор, чтобы масштаб был его
         double scale = Win32.GetDpiForWindow(_hwnd) / 96d;
-        int gap = (int)(12 * scale), w = (int)(WidthDip * scale), h = (int)((_alarm ? 210 : _tall ? 190 : HeightDip) * scale);
+        int gap = (int)(12 * scale), w = (int)(WidthDip * scale), h = (int)Math.Ceiling(ContentHeight() * scale);
         AppWindow.MoveAndResize(new RectInt32(area.X + area.Width - w - gap, area.Y + area.Height - h - gap, w, h));
     }
 
